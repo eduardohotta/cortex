@@ -8,123 +8,179 @@ class AudioCaptureService extends EventEmitter {
         super();
         this.isCapturing = false;
         this.pythonProcess = null;
+        this.simulationInterval = null;
         this.devices = [];
+        this.defaultLoopbackId = null;
         this.pythonPath = this.detectPython();
+        this._cleaningUp = false;
     }
 
     detectPython() {
         const rootPath = path.join(__dirname, '..', '..');
         const venvPath = path.join(rootPath, '.venv', 'Scripts', 'python.exe');
-        if (fs.existsSync(venvPath)) {
-            return venvPath;
-        }
-        return 'python';
+        return fs.existsSync(venvPath) ? venvPath : 'python';
     }
 
-    /**
-     * Get available audio devices via Python
-     */
     async getDevices() {
         return new Promise((resolve) => {
             const grabberPath = path.join(__dirname, 'audio_grabber.py');
             const proc = spawn(this.pythonPath, [grabberPath, '--list']);
 
             let data = '';
-            proc.stdout.on('data', (chunk) => data += chunk);
+            proc.stdout.on('data', (c) => (data += c));
+
             proc.on('close', () => {
                 try {
                     const pyDevices = JSON.parse(data);
 
-                    // Direct mapping with 'type' categorization from Python
-                    const devices = pyDevices.map(d => ({
-                        id: d.id,
-                        name: d.name,
-                        type: d.type || (d.is_loopback ? 'loopback' : (d.max_input_channels > 0 ? 'input' : 'output')),
-                        isLoopback: !!d.is_loopback,
-                        channels: d.max_input_channels || d.max_output_channels
-                    }));
+                    // Windows provides devices via multiple Host APIs (MME, DirectSound, WASAPI)
+                    // We only want WASAPI for loopback and performance, and we need to filter duplicates.
+
+                    // Filter: Prioritize WASAPI (usually hostApi 2 on many systems, but let's check names/flags)
+                    const filtered = pyDevices.filter(d => {
+                        // Keep devices that are either loopback OR belonging to a modern API
+                        // On Windows, WASAPI is highly preferred for low latency loopback.
+                        const isWasapi = d.hostapi === 2 || (d.name && d.name.includes('WASAPI'));
+                        return isWasapi || d.is_loopback;
+                    });
+
+                    // Final Mapping & De-duplication by name
+                    const uniqueMap = new Map();
+                    const devices = [];
+
+                    filtered.forEach(d => {
+                        if (!uniqueMap.has(d.name)) {
+                            const dev = {
+                                id: d.id,
+                                name: d.name,
+                                type: d.type || (d.is_loopback ? 'loopback' : (d.max_input_channels > 0 ? 'input' : 'output')),
+                                isLoopback: Boolean(d.is_loopback),
+                                channels: d.max_input_channels || d.max_output_channels
+                            };
+                            uniqueMap.set(d.name, true);
+                            devices.push(dev);
+                        }
+                    });
 
                     // Find a default loopback for logic fallbacks
-                    const systemDev = devices.find(d => d.type === 'loopback' || d.isLoopback);
-                    this.defaultLoopbackId = systemDev ? systemDev.id : (devices.length > 0 ? devices[0].id : 0);
+                    const systemDev = devices.find(d => d.isLoopback || d.type === 'loopback');
+                    if (systemDev) {
+                        this.defaultLoopbackId = systemDev.id;
+                        console.log(`[AudioCapture] Auto-selected loopback device: ${systemDev.name} (ID: ${systemDev.id})`);
+                    } else {
+                        const backupDev = devices.find(d => d.type === 'input') || devices[0];
+                        this.defaultLoopbackId = backupDev ? backupDev.id : 0;
+                        console.warn(`[AudioCapture] NO loopback device found. Falling back to: ${backupDev ? backupDev.name : 'Unknown'} (ID: ${this.defaultLoopbackId})`);
+                    }
 
                     this.devices = devices;
-                    console.log(`[AudioCapture] Found ${devices.length} audio devices`);
+                    console.log(`[AudioCapture] Found ${devices.length} unique audio devices`);
                     resolve(devices);
                 } catch (e) {
-                    console.error('Failed to parse Python devices:', e);
-                    resolve([{ id: 0, name: 'Default Device (Input)', type: 'input' }]);
+                    console.error('[AudioCapture] Failed to parse devices from Python:', e);
+                    this.devices = [{ id: 0, name: 'Default Input', type: 'input' }];
+                    this.defaultLoopbackId = 0;
+                    resolve(this.devices);
                 }
             });
         });
     }
 
+    /* ===== SAFE RMS ===== */
+    calculateLevel(buffer) {
+        if (!buffer || buffer.length < 4) return 0;
+        let sum = 0;
+        let count = 0;
+
+        for (let i = 0; i + 1 < buffer.length; i += 2) {
+            const s = buffer.readInt16LE(i) / 32768;
+            sum += s * s;
+            count++;
+        }
+
+        return count ? Math.sqrt(sum / count) : 0;
+    }
+
     async startCapture(deviceId = null) {
         if (this.isCapturing) return;
 
-        if (this.devices.length === 0) {
-            await this.getDevices();
-        }
+        if (!this.devices.length) await this.getDevices();
 
-        let actualDeviceId = deviceId;
-        if (deviceId === 'system' || deviceId === 'default' || deviceId === null) {
-            actualDeviceId = this.defaultLoopbackId;
-        }
-
-        console.log(`[AudioCapture] Starting Python audio grabber for device ${actualDeviceId}...`);
+        const actualDeviceId =
+            deviceId === 'system' || deviceId == null
+                ? this.defaultLoopbackId
+                : deviceId;
 
         const grabberPath = path.join(__dirname, 'audio_grabber.py');
-        const args = [grabberPath, '--device', actualDeviceId.toString()];
+
+        this.isCapturing = true;
+        this.emit('started');
 
         try {
-            this.pythonProcess = spawn(this.pythonPath, args);
+            this.pythonProcess = spawn(this.pythonPath, [
+                grabberPath,
+                '--device',
+                String(actualDeviceId)
+            ]);
 
             this.pythonProcess.stdout.on('data', (chunk) => {
-                this.emit('audio', chunk);
+                // TYPE GUARD: Only emit if it's binary data (Buffer)
+                // JSON messages should go to stderr or be handled separately
+                if (Buffer.isBuffer(chunk)) {
+                    this.emit('audio', chunk);
+                } else {
+                    console.debug('[AudioCapture] Received non-buffer data on stdout:', chunk);
+                }
             });
 
-            this.pythonProcess.stderr.on('data', (data) => {
-                const msg = data.toString().trim();
-                if (msg) console.log(`[AudioGrabber] ${msg}`);
-            });
-
-            this.pythonProcess.on('error', (err) => {
-                console.error('Failed to start Python grabber:', err);
-                this.startSimulatedCapture();
-            });
-
-            this.pythonProcess.on('close', (code) => {
-                console.log(`Python audio grabber closed with code ${code}`);
-                this.isCapturing = false;
-                this.pythonProcess = null;
-                this.emit('stopped');
-            });
-
-            this.isCapturing = true;
-            this.emit('started');
-
-        } catch (error) {
-            console.error('Audio capture spawn error:', error);
+            this.pythonProcess.once('close', () => this.cleanup());
+            this.pythonProcess.once('error', () => this.startSimulatedCapture());
+        } catch {
             this.startSimulatedCapture();
         }
     }
 
     startSimulatedCapture() {
-        if (this.isCapturing) return;
+        if (this.simulationInterval || this.isCapturing) return;
+
         this.isCapturing = true;
-        this.simulationInterval = setInterval(() => {
-            const buffer = Buffer.alloc(3200);
-            this.emit('audio', buffer);
-        }, 100);
         this.emit('started');
+
+        this.simulationInterval = setInterval(() => {
+            const level = Math.random() * 0.05;
+            this.emit('audio', {
+                pcm: Buffer.alloc(3200),
+                level,
+                simulated: true,
+                ts: Date.now()
+            });
+        }, 100);
     }
 
-    async stopCapture() {
+    stopCapture() {
         if (!this.isCapturing) return;
+        this.cleanup();
+        this.emit('stopped');
+    }
 
-        if (this.pythonProcess) {
-            this.pythonProcess.kill();
-            this.pythonProcess = null;
+    panic() {
+        console.warn('[AudioCapture] PANIC');
+        this.cleanup(true);
+        this.emit('panic');
+    }
+
+    cleanup(force = false) {
+        if (this._cleaningUp) return;
+        this._cleaningUp = true;
+
+        if (this.pythonProcess?.pid) {
+            try {
+                if (process.platform === 'win32') {
+                    spawn('taskkill', ['/pid', this.pythonProcess.pid, '/f', '/t']);
+                } else {
+                    this.pythonProcess.kill('SIGTERM');
+                }
+            } catch { }
         }
 
         if (this.simulationInterval) {
@@ -132,8 +188,11 @@ class AudioCaptureService extends EventEmitter {
             this.simulationInterval = null;
         }
 
+        this.pythonProcess = null;
         this.isCapturing = false;
-        this.emit('stopped');
+        this._cleaningUp = false;
+
+        if (force) this.emit('reset');
     }
 }
 

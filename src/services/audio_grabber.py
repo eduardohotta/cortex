@@ -7,8 +7,8 @@ import json
 import argparse
 import signal
 
-# Ensure unbuffered output
-sys.stdout.reconfigure(line_buffering=True)
+# Ensure unbuffered output for binary streaming
+# sys.stdout.reconfigure(line_buffering=True) -- REMOVED: Interferes with binary data on some Windows shells
 
 try:
     import pyaudiowpatch as pyaudio
@@ -37,7 +37,9 @@ def list_devices():
             
             # Determine device types
             device_type = "unknown"
-            if HAS_LOOPBACK and 'isLoopbackDevice' in dev and dev['isLoopbackDevice']:
+            is_loopback = HAS_LOOPBACK and dev.get('isLoopbackDevice', False)
+            
+            if is_loopback:
                 device_type = "loopback"
             elif dev.get('maxInputChannels', 0) > 0 and dev.get('maxOutputChannels', 0) == 0:
                 device_type = "input"
@@ -139,8 +141,19 @@ def capture_loopback(device_id=None, sample_rate=16000, channels=1):
         
         # Retry logic for channels (some drivers are picky)
         stream = None
-        for try_channels in [native_channels, 2, 1]:
+        last_error = None
+        
+        # Try a wider range of channel counts. 
+        # Many loopback drivers require the exact number of channels the output is using (e.g. 2, 6, 8)
+        # We start with native, then common pairs, then higher counts.
+        retry_channels = [native_channels, 2, 1]
+        for c in [4, 6, 8]:
+            if c not in retry_channels:
+                retry_channels.append(c)
+
+        for try_channels in retry_channels:
             try:
+                # Some WASAPI loopback devices require specific channel counts
                 stream = p.open(
                     format=FORMAT,
                     channels=try_channels,
@@ -152,10 +165,14 @@ def capture_loopback(device_id=None, sample_rate=16000, channels=1):
                 native_channels = try_channels # Update for downstream processing
                 break
             except Exception as e:
+                last_error = str(e)
+                # Only print specific error for the first failure or if it's the native count
+                if try_channels == native_channels or try_channels == retry_channels[0]:
+                    print(json.dumps({"info": f"Failed to open with {try_channels} channels: {last_error}"}), file=sys.stderr)
                 continue
         
         if stream is None:
-            raise Exception("Could not open audio stream with 1, 2 or native channels")
+            raise Exception(f"Could not open audio stream after retrying channels {retry_channels}. Last error: {last_error}")
         
         status_msg = {
             "status": "capturing", 

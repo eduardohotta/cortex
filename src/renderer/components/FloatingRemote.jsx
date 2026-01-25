@@ -229,19 +229,42 @@ export default function FloatingRemote({ standalone = false }) {
 
                     {isAudioMenuOpen && (
                         <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#121214]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-3 z-[9999] flex flex-col gap-4">
+
                             {/* Mic */}
                             <div className="space-y-1.5">
                                 <label className="text-[9px] font-black uppercase text-gray-500 tracking-widest ml-1">
                                     Microfone (Você)
                                 </label>
+
                                 <select
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-white focus:outline-none focus:border-blue-500/50"
+                                    className="
+          w-full
+          appearance-none
+          bg-[#121214]
+          border border-white/10
+          rounded-lg
+          px-3 py-2
+          text-[10px] text-white
+          focus:outline-none focus:border-blue-500/50
+        "
                                     value={selectedAudio.input}
                                     onChange={(e) => handleAudioChange('input', e.target.value)}
                                 >
-                                    <option value="default">Padrão</option>
-                                    {audioDevices.input.map(d => (
-                                        <option key={d.id} value={d.id}>{d.name.substring(0, 30)}...</option>
+                                    <option
+                                        value="default"
+                                        className="bg-[#121214] text-white"
+                                    >
+                                        Padrão
+                                    </option>
+
+                                    {audioDevices.input.map((d) => (
+                                        <option
+                                            key={d.id}
+                                            value={d.id.toString()}
+                                            className="bg-[#121214] text-white"
+                                        >
+                                            {d.name.substring(0, 30)}...
+                                        </option>
                                     ))}
                                 </select>
                             </div>
@@ -251,19 +274,42 @@ export default function FloatingRemote({ standalone = false }) {
                                 <label className="text-[9px] font-black uppercase text-gray-500 tracking-widest ml-1">
                                     Sistema (Entrevistador)
                                 </label>
+
                                 <select
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-white focus:outline-none focus:border-blue-500/50"
-                                    value={selectedAudio.output}
+                                    className="
+          w-full
+          appearance-none
+          bg-[#121214]
+          border border-white/10
+          rounded-lg
+          px-3 py-2
+          text-[10px] text-white
+          focus:outline-none focus:border-blue-500/50
+        "
+                                    value={selectedAudio.output?.toString()}
                                     onChange={(e) => handleAudioChange('output', e.target.value)}
                                 >
-                                    <option value="default">Padrão</option>
-                                    {audioDevices.output.map(d => (
-                                        <option key={d.id} value={d.id}>{d.name.substring(0, 30)}...</option>
+                                    <option
+                                        value="default"
+                                        className="bg-[#121214] text-white"
+                                    >
+                                        Padrão
+                                    </option>
+
+                                    {audioDevices.output.map((d) => (
+                                        <option
+                                            key={d.id}
+                                            value={d.id.toString()}
+                                            className="bg-[#121214] text-white"
+                                        >
+                                            {d.name.substring(0, 30)}...
+                                        </option>
                                     ))}
                                 </select>
                             </div>
                         </div>
                     )}
+
                 </div>
 
                 <div className="w-px h-6 bg-white/8" />
@@ -327,7 +373,7 @@ export default function FloatingRemote({ standalone = false }) {
 
                 {/* Stats */}
                 <div className="flex items-center gap-3 px-2">
-                    <div className="flex flex-col gap-1 items-end">
+                    <div className="flex flex-col gap-1 items-center">
                         <AudioVisualizer
                             level={audioLevel}
                             height={10}
@@ -335,8 +381,8 @@ export default function FloatingRemote({ standalone = false }) {
                             type="output"
                             className={clsx("transition-opacity", !isListening && "opacity-20")}
                         />
-                        <span className="text-white/40 text-[8px] font-black uppercase">
-                            {tokenCount.toLocaleString()} TKN
+                        <span className="text-white/40 text-[10px] font-black uppercase">
+                            {tokenCount.toLocaleString()} TOKENS
                         </span>
                     </div>
                 </div>

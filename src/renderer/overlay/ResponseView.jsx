@@ -8,18 +8,7 @@ export default function ResponseView() {
     const [isStreaming, setIsStreaming] = useState(false);
     const [timer, setTimer] = useState(0);
     const [error, setError] = useState(null);
-    const [showSettings, setShowSettings] = useState(false);
-    const [opacity, setOpacity] = useState(90);
     const bottomRef = useRef(null);
-
-    // Load opacity from settings
-    useEffect(() => {
-        if (window.electronAPI) {
-            window.electronAPI.settings.get('overlayOpacity').then(val => {
-                if (val) setOpacity(val);
-            });
-        }
-    }, []);
 
     // LLM Events
     useEffect(() => {
@@ -75,7 +64,7 @@ export default function ResponseView() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#070708]/40" style={{ opacity: opacity / 100 }}>
+        <div className="h-full flex flex-col bg-transparent">
             {/* Header */}
             <div className="px-4 h-12 flex-none flex items-center justify-between border-b border-white/5 bg-black/20">
                 <span className="text-[10px] font-mono font-bold text-gray-500">{formatTime(timer)}</span>
@@ -87,43 +76,6 @@ export default function ResponseView() {
                     >
                         Encerrar
                     </button>
-                    <div className="flex items-center gap-1">
-                        {/* Settings Button */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
-                                className={clsx(
-                                    "p-1.5 rounded-md transition-all",
-                                    showSettings ? "text-white bg-white/10" : "text-gray-600 hover:text-white hover:bg-white/5"
-                                )}
-                            >
-                                <Settings size={12} />
-                            </button>
-                            {showSettings && (
-                                <div className="absolute right-0 top-full mt-2 w-48 bg-[#121214] border border-white/10 rounded-lg shadow-2xl p-3 z-50">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[9px] font-black uppercase text-gray-400">Opacidade</span>
-                                        <span className="text-[9px] font-mono text-white">{opacity}%</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="30"
-                                        max="100"
-                                        value={opacity}
-                                        onChange={(e) => handleOpacityChange(parseInt(e.target.value))}
-                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                        {/* Minimize Button */}
-                        <button
-                            onClick={handleMinimize}
-                            className="p-1.5 text-gray-600 hover:text-white hover:bg-white/5 rounded-md transition-all"
-                        >
-                            <Minus size={12} />
-                        </button>
-                    </div>
                 </div>
             </div>
 

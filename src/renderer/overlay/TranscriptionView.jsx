@@ -57,7 +57,7 @@ export default function TranscriptionView() {
     const currentLang = LANGUAGES.find(l => l.id === selectedLang) || LANGUAGES[0];
 
     return (
-        <div className="h-full flex flex-col bg-[#070708]/40">
+        <div className="h-full flex flex-col bg-transparent">
             {/* Header */}
             <div className="h-16 flex-none flex items-center justify-center border-b border-white/5 bg-black/20 gap-3">
                 <div className="relative">
@@ -93,7 +93,7 @@ export default function TranscriptionView() {
             {/* Footer */}
             <div className="p-3 bg-black/40 border-t border-white/10 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 border border-white/10 rounded-md text-[8px] font-bold uppercase text-white/40">
-                    <span>{hotkey.replace('CmdOrCtrl', '⌘').replace('+', ' ')}</span>
+                    <span>{hotkey.replace('CmdOrCtrl', '⌘')}</span>
                     <span className="ml-1 text-white/60">para enviar</span>
                 </div>
 

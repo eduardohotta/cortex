@@ -96,6 +96,7 @@ function createTranscriptionWindow() {
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
+        resizable: true,
         show: false,
         webPreferences: {
             nodeIntegration: false,
@@ -122,6 +123,7 @@ function createResponseWindow() {
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
+        resizable: true,
         show: false,
         webPreferences: {
             nodeIntegration: false,

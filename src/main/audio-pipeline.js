@@ -25,6 +25,16 @@ function setupAudioPipeline() {
     let lastVolumeEmit = 0;
 
     audioService.on('audio', (buffer) => {
+        // TYPE GUARD: Ensure we have a Buffer instance
+        if (!Buffer.isBuffer(buffer)) {
+            // Log it but don't crash
+            try {
+                const msg = buffer.toString();
+                if (msg.startsWith('{')) console.log('[Pipeline] Python Bridge Info:', msg);
+            } catch (e) { }
+            return;
+        }
+
         speechService.processAudio(buffer);
 
         const now = Date.now();
@@ -53,15 +63,9 @@ function setupAudioPipeline() {
     });
 
     speechService.on('transcript', (data) => {
-        const mainWindow = getMainWindow();
-        const overlayWindow = getOverlayWindow();
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('transcription:result', data);
-        }
-        if (overlayWindow && !overlayWindow.isDestroyed()) {
-            overlayWindow.webContents.send('transcription:result', data);
-        }
+        // Broadcast to ALL windows (Main, Remote, Transcription, Response)
+        const { broadcastToWindows } = require('./windows');
+        broadcastToWindows('transcription:result', data);
 
         if (data.isFinal) {
             contextManager.addTranscript(data.text, true);

@@ -3,6 +3,7 @@ import { AppProvider, useApp } from '../contexts/AppContext';
 import TranscriptionView from './TranscriptionView';
 import ResponseView from './ResponseView';
 import FloatingRemote from '../components/FloatingRemote';
+import { Settings, Minus, X } from 'lucide-react';
 import clsx from 'clsx';
 
 /**
@@ -10,28 +11,101 @@ import clsx from 'clsx';
  * - Header draggable (Electron)
  * - Conteúdo responsivo
  */
-function WindowWrapper({ title, children, transparent = true }) {
+function WindowWrapper({ title, children, transparent = true, viewType }) {
+    const [opacity, setOpacity] = useState(90);
+    const [showOpacitySlider, setShowOpacitySlider] = useState(false);
+
+    useEffect(() => {
+        if (window.electronAPI) {
+            window.electronAPI.settings.get('overlayOpacity').then(val => {
+                if (val) setOpacity(val);
+            });
+        }
+    }, []);
+
+    const handleOpacityChange = async (val) => {
+        setOpacity(val);
+        if (window.electronAPI) {
+            await window.electronAPI.settings.set('overlayOpacity', val);
+        }
+    };
+
+    const handleMinimize = () => {
+        window.electronAPI?.overlay?.hide();
+    };
+
+    const handleOpenSettings = () => {
+        window.electronAPI?.app?.showDashboard();
+    };
+
     return (
         <div
             className={clsx(
-                'flex flex-col h-full w-full overflow-hidden rounded-2xl border border-white/10 shadow-2xl',
+                'flex flex-col h-full w-full overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-opacity duration-300',
                 transparent ? 'bg-[#070708]/90 backdrop-blur-2xl' : 'bg-[#070708]'
             )}
+            style={{ opacity: opacity / 100 }}
         >
             {/* Drag Header */}
             <header
-                className="h-11 flex items-center justify-between px-4 border-b border-white/10 text-white"
+                className="h-11 flex-none flex items-center justify-between px-4 border-b border-white/10 text-white select-none"
                 style={{ WebkitAppRegion: 'drag' }}
             >
                 <span className="text-[10px] font-bold tracking-widest uppercase opacity-80 pointer-events-none">
                     {title}
                 </span>
 
-                {/* área reservada para botões futuros */}
                 <div
-                    className="flex gap-2"
+                    className="flex items-center gap-1"
                     style={{ WebkitAppRegion: 'no-drag' }}
-                />
+                >
+                    {/* Opacity Control */}
+                    <div className="relative flex items-center">
+                        <button
+                            onClick={() => setShowOpacitySlider(!showOpacitySlider)}
+                            className={clsx(
+                                "p-2 rounded-lg transition-all",
+                                showOpacitySlider ? "text-white bg-white/10" : "text-gray-500 hover:text-white hover:bg-white/5"
+                            )}
+                            title="Opacidade"
+                        >
+                            <span className="text-[10px] font-mono leading-none">{opacity}%</span>
+                        </button>
+
+                        {showOpacitySlider && (
+                            <div className="absolute right-0 top-full mt-2 w-32 bg-[#121214] border border-white/10 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
+                                <input
+                                    type="range"
+                                    min="20"
+                                    max="100"
+                                    value={opacity}
+                                    onChange={(e) => handleOpacityChange(parseInt(e.target.value))}
+                                    className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Settings Button */}
+                    <button
+                        onClick={handleOpenSettings}
+                        className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+                        title="Configurações"
+                    >
+                        <Settings size={14} />
+                    </button>
+
+                    {/* Minimize Button - Hidden for remote as per user request */}
+                    {viewType !== 'remote' && (
+                        <button
+                            onClick={handleMinimize}
+                            className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                            title="Fechar"
+                        >
+                            <Minus size={14} />
+                        </button>
+                    )}
+                </div>
             </header>
 
             {/* Content */}
@@ -109,7 +183,7 @@ function OverlayContent() {
     // ===== TRANSCRIPTION =====
     if (view === 'transcription') {
         return (
-            <WindowWrapper title="Transcrição de Voz">
+            <WindowWrapper title="Transcrição de Voz" viewType="transcription">
                 <TranscriptionView />
             </WindowWrapper>
         );
@@ -118,7 +192,7 @@ function OverlayContent() {
     // ===== RESPONSE =====
     if (view === 'response') {
         return (
-            <WindowWrapper title="Resposta da IA">
+            <WindowWrapper title="Resposta da IA" viewType="response">
                 <ResponseView />
             </WindowWrapper>
         );

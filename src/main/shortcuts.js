@@ -103,19 +103,19 @@ async function handleAppAction(action, data) {
         }
         broadcastState();
     } else if (action === 'stop-all') {
-        if (appState.isListening) {
-            await audioService.stopCapture();
-            await speechService.stop();
-            appState.isListening = false;
-        }
-        appState.transcriptBuffer = '';
-        appState.tokenCount = 0;
-        broadcastState();
+        const { app } = require('electron');
+        console.log('[Main] Stopping all services and quitting...');
 
-        const { windows } = require('./windows');
-        Object.values(windows).forEach(win => {
-            if (win && !win.isDestroyed() && win !== windows.main) win.hide();
-        });
+        try {
+            if (audioService) audioService.stopCapture();
+            if (speechService) speechService.stop();
+        } catch (e) {
+            console.error('Error stopping services during exit:', e);
+        }
+
+        app.quit();
+        // Force exit after a short delay to ensure clean shutdown
+        setTimeout(() => process.exit(0), 500);
     } else if (action === 'ask') {
         const { broadcastToWindows } = require('./windows');
         broadcastToWindows('hotkey:ask');

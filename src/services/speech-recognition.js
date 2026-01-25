@@ -102,6 +102,12 @@ class SpeechRecognitionService extends EventEmitter {
     processAudio(audioData) {
         if (!this.isActive) return;
 
+        // TYPE GUARD: Ensure we have a Buffer
+        if (!Buffer.isBuffer(audioData)) {
+            console.error('[SpeechService] Received non-Buffer audio data. Type:', typeof audioData);
+            return;
+        }
+
         // Direct pipe for Faster-Whisper (with ready check)
         if (this.provider === 'whisper-local' && this.pythonProcess && this.pythonProcess.stdin.writable) {
             if (this.whisperReady) {
