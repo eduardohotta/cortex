@@ -207,7 +207,7 @@ def capture_loopback(device_id=None, sample_rate=16000, channels=1):
     except Exception as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
     finally:
-        if 'stream' in locals():
+        if 'stream' in locals() and stream is not None:
             stream.stop_stream()
             stream.close()
         p.terminate()

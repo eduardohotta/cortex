@@ -1,7 +1,7 @@
 /**
  * IPC Handlers Module
  */
-const { ipcMain, app } = require('electron');
+const { ipcMain, app, BrowserWindow } = require('electron');
 const { appState, broadcastState } = require('./app-state');
 const { getMainWindow, getOverlayWindow, toggleStealthMode, broadcastToWindows } = require('./windows');
 const { handleAppAction } = require('./shortcuts');
@@ -148,6 +148,8 @@ function registerIPCHandlers() {
     ipcMain.handle('settings:get', (event, key, provider) => settingsManager.get(key, provider));
     ipcMain.handle('settings:set', (event, key, value, provider) => {
         settingsManager.set(key, value, provider);
+        // Relay change to all windows (for sync)
+        broadcastToWindows('settings:changed', { key, value, provider });
         return { success: true };
     });
     ipcMain.handle('settings:getAll', (event, provider) => settingsManager.getAll(provider));
@@ -209,6 +211,25 @@ function registerIPCHandlers() {
             if (mainWindow.isMaximized()) mainWindow.unmaximize();
             else mainWindow.maximize();
         }
+    });
+
+    ipcMain.on('window:move', (event, { x, y }) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            const [currentX, currentY] = win.getPosition();
+            win.setPosition(currentX + x, currentY + y);
+        }
+    });
+
+    ipcMain.handle('app:show-dashboard', () => {
+        let mainWindow = getMainWindow();
+        if (!mainWindow) {
+            const { createMainWindow } = require('./windows');
+            mainWindow = createMainWindow();
+        }
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
     });
 }
 

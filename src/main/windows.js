@@ -52,15 +52,15 @@ function createRemoteWindow() {
 
     windows.remote = new BrowserWindow({
         width: 700,
-        height: 100, // Small buffer
+        height: 600, // Increased to fit popups (Opening upwards)
         x: Math.floor((width - 700) / 2),
-        y: height - 120,
+        y: height - 620, // Adjusted Y to keep bar at bottom
         frame: false,
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
-        resizable: true, // Temporarily true for debug
-        show: true, // SHOW IMMEDIATELY
+        resizable: false,
+        show: true,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -72,6 +72,10 @@ function createRemoteWindow() {
     const overlayPath = path.join(DIST_PATH, 'overlay', 'index.html');
     // Using loadFile with hash option for robustness
     windows.remote.loadFile(overlayPath, { hash: 'remote' });
+
+    // Enable click-through for transparent areas by default
+    windows.remote.setIgnoreMouseEvents(true, { forward: true });
+
     configureWindow(windows.remote);
 
     windows.remote.on('closed', () => {
@@ -139,6 +143,7 @@ function toggleStealthMode() {
             win.setContentProtection(isStealthMode);
         }
     });
+    broadcastToWindows('overlay:stealth-changed', isStealthMode);
     return isStealthMode;
 }
 

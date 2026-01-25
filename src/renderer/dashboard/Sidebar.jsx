@@ -48,7 +48,7 @@ export function Sidebar({ onOpenSettings }) {
                         <Command size={26} className="text-black" />
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-xs font-black uppercase tracking-widest text-white">Pilot Suite</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-white">CORTEX</span>
                         <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">v2.8.5 Stable</span>
                     </div>
                 </div>

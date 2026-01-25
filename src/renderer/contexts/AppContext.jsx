@@ -69,13 +69,7 @@ export function AppProvider({ children }) {
         });
 
         const removeTranscriptListener = window.electronAPI.transcription.onTranscript((data) => {
-            // We can manage full history here or just broadcast the event
-            // For Context, it's better to store meaningful state
-            // Let's rely on components to manage the array for now to avoid rapid reducer updates
-            // Or store it here? Storing high-frequency updates in React Context root can cause rerenders.
-            // For optimization (Vercel best practice: `rerender-defer-reads`), 
-            // we might want a separate context for high-freq data or use refs.
-            // Let's stick to basic reducer for now but be mindful.
+            dispatch({ type: ACTIONS.UPDATE_TRANSCRIPT, payload: data });
         });
 
         const removeAskListener = window.electronAPI.app.onHotkeyAsk(() => {

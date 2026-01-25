@@ -4,7 +4,7 @@ import { Sidebar } from './Sidebar';
 import AssistantEditor from './AssistantEditor';
 import SettingsModal from './SettingsModal';
 import FloatingRemote from '../components/FloatingRemote';
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb, Minus, X } from 'lucide-react';
 
 function DashboardContent() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -17,6 +17,24 @@ function DashboardContent() {
 
             {/* Workspace Layer */}
             <main className="flex-1 flex flex-col min-w-0 bg-[#0a0a0c] relative shadow-[inset_1px_0_0_rgba(255,255,255,0.05)]">
+                {/* Custom Window Controls */}
+                <div className="absolute top-0 right-0 p-2 flex gap-2 z-50">
+                    <button
+                        onClick={() => window.electronAPI?.app?.minimize()}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+                        title="Minimizar"
+                    >
+                        <Minus size={16} />
+                    </button>
+                    <button
+                        onClick={() => window.electronAPI?.app?.close()}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-red-500/20 hover:text-red-400 transition-all"
+                        title="Fechar"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
                 <div className="flex-1 overflow-hidden">
                     <AssistantEditor />
                 </div>

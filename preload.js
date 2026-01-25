@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onUpdateQuestion: (callback) => ipcRenderer.on('update-question', (_, data) => callback(data)),
         onCopyResponse: (callback) => ipcRenderer.on('copy-response', () => callback()),
         onStateChanged: (callback) => ipcRenderer.on('overlay:state-changed', (_, isVisible) => callback(isVisible)),
+        onStealthChanged: (callback) => ipcRenderer.on('overlay:stealth-changed', (_, isStealth) => callback(isStealth)),
         setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', ignore)
     },
 
@@ -31,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         minimize: () => ipcRenderer.invoke('window:minimize'),
         close: () => ipcRenderer.invoke('window:close'),
         toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+        showDashboard: () => ipcRenderer.invoke('app:show-dashboard'),
+        move: (x, y) => ipcRenderer.send('window:move', { x, y }),
         onHotkeyRecord: (callback) => ipcRenderer.on('hotkey:record', () => callback()),
         onHotkeyAsk: (callback) => ipcRenderer.on('hotkey:ask', () => callback()),
         onStateUpdate: (callback) => ipcRenderer.on('app:state-update', (_, state) => callback(state)),
@@ -74,6 +77,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         loadProfile: (name) => ipcRenderer.invoke('settings:loadProfile', name),
         getProfiles: () => ipcRenderer.invoke('settings:getProfiles'),
         deleteProfile: (name) => ipcRenderer.invoke('settings:deleteProfile', name),
-        refreshShortcuts: () => ipcRenderer.invoke('settings:refreshShortcuts')
+        refreshShortcuts: () => ipcRenderer.invoke('settings:refreshShortcuts'),
+        onSettingsChanged: (callback) => ipcRenderer.on('settings:changed', (_, data) => callback(data))
     }
 });

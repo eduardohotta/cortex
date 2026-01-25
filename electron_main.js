@@ -1,5 +1,5 @@
 /**
- * Interview Assistant - Main Entry Point
+ * CORTEX - Main Entry Point
  * 
  * This is the Electron main process entry point.
  * All functionality is modularized into src/main/ for maintainability.
@@ -10,6 +10,14 @@ const { app, globalShortcut, BrowserWindow } = require('electron');
 // This error happens when the GPU shader cache file is locked by the OS or a zombie process.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 app.commandLine.appendSwitch('disable-http-cache');
+
+process.on('uncaughtException', (error) => {
+  console.error('CRITICAL ERROR (Uncaught Exception):', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL ERROR (Unhandled Rejection):', reason);
+});
 
 // Import services
 const AudioCaptureService = require('./src/services/audio-capture');

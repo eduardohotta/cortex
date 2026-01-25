@@ -74,14 +74,16 @@ async function handleAppAction(action, data) {
         } else {
             console.log('[Main] Starting recording...');
             try {
-                const deviceId = settingsManager.get('audioInput') || 'default';
+                // Use audioOutput (Loopback) as the primary source for the AI to hear the interviewer
+                const deviceId = settingsManager.get('audioOutput') || 'default';
                 const sttProvider = settingsManager.get('sttProvider') || 'groq';
                 const apiKeys = settingsManager.get('apiKeys', sttProvider) || [];
 
                 speechService.setProvider(sttProvider);
                 speechService.configure({
                     apiKey: apiKeys.length > 0 ? apiKeys[0] : '',
-                    language: settingsManager.get('language') || 'auto'
+                    language: settingsManager.get('language') || 'auto',
+                    model: settingsManager.get('whisperModel')
                 });
 
                 await speechService.start();

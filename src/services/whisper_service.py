@@ -48,6 +48,7 @@ class WhisperService:
 
     def load_model(self):
         try:
+            print(json.dumps({"status": "loading_model", "model": self.model_size}), flush=True)
             self.model = WhisperModel(self.model_size, device=self.device, compute_type=self.compute_type)
             return True
         except Exception as e:

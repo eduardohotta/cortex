@@ -65,9 +65,10 @@ export default function SettingsModal({ isOpen, onClose }) {
 
             window.electronAPI.audio.getDevices().then(devices => {
                 const categorized = {
-                    input: devices.filter(d => d.type === 'input' || d.type === 'duplex'),
-                    output: devices.filter(d => d.type === 'output' || d.type === 'duplex'),
-                    loopback: devices.filter(d => d.type === 'loopback' || d.isLoopback)
+                    // Show only real microphones (inputs that are not loopbacks) + Duplex (Headsets)
+                    input: devices.filter(d => (d.type === 'input' || d.type === 'duplex') && !d.isLoopback),
+                    // Show speakers and loopback devices for system audio capture + Duplex
+                    output: devices.filter(d => d.type === 'output' || d.type === 'duplex' || d.type === 'loopback' || d.isLoopback)
                 };
                 setAudioDevices(categorized);
             });
@@ -270,6 +271,27 @@ export default function SettingsModal({ isOpen, onClose }) {
                                             <option value="google">Google Speech-to-Text</option>
                                             <option value="whisper-local">Local Whisper (Offline)</option>
                                         </select>
+
+                                        {/* Local Whisper Model Selector */}
+                                        {localSettings.sttProvider === 'whisper-local' && (
+                                            <div className="animate-in fade-in slide-in-from-top-2 pt-2">
+                                                <div className="flex items-center gap-3 text-gray-500 pl-1 mb-2">
+                                                    <div className="w-1 h-1 rounded-full bg-green-500" />
+                                                    <label className="text-[9px] font-black uppercase tracking-widest">Modelo Local (Faster-Whisper)</label>
+                                                </div>
+                                                <select
+                                                    value={localSettings.whisperModel || 'base'}
+                                                    onChange={(e) => handleChange('whisperModel', e.target.value)}
+                                                    className="w-full bg-green-900/10 border border-green-500/20 rounded-2xl px-6 py-4 text-xs text-green-400 hover:bg-green-900/20 cursor-pointer transition-all no-drag"
+                                                >
+                                                    <option value="tiny">Tiny (Ultra Rápido, Menor Precisão)</option>
+                                                    <option value="base">Base (Equilibrado)</option>
+                                                    <option value="small">Small (Boa Precisão)</option>
+                                                    <option value="medium">Medium (Alta Precisão)</option>
+                                                    <option value="large-v3-turbo">Large v3 Turbo (Máxima Precisão)</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
