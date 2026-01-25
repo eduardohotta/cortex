@@ -26,8 +26,8 @@ export default function FloatingRemote({ standalone = false }) {
             window.electronAPI.settings.getAll().then(settings => {
                 if (settings) {
                     setHotkeys({
-                        record: settings.hotkeyRecord || 'Ctrl+D',
-                        ask: settings.hotkeyAsk || 'Ctrl+Enter'
+                        record: settings.hotkeyRecord,
+                        ask: settings.hotkeyAsk
                     });
                     setSelectedAudio({
                         input: settings.audioInput || 'default',
@@ -65,7 +65,6 @@ export default function FloatingRemote({ standalone = false }) {
         return hotkey
             .replace('CmdOrCtrl', '⌘')
             .replace('Control', 'Ctrl')
-            .replace('+', ' ')
             .replace('Enter', '↵');
     };
 

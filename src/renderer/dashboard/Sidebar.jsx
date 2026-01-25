@@ -49,7 +49,7 @@ export function Sidebar({ onOpenSettings }) {
                     </div>
                     <div className="flex flex-col">
                         <span className="text-xs font-black uppercase tracking-widest text-white">CORTEX</span>
-                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">v2.8.5 Stable</span>
+                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">V1.0.0</span>
                     </div>
                 </div>
 
