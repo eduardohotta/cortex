@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com">
+    <title>Interview Assistant Overlay</title>
+    <link rel="stylesheet" href="styles/design-tokens.css">
+    <link rel="stylesheet" href="styles/overlay.css">
+</head>
+
+<body>
+    <div class="overlay-app" id="overlay">
+        <!-- Minimal Top Bar with Audio Visualizer -->
+        <header class="overlay-header">
+            <div class="waveform-container" id="waveform">
+                <div class="mic-icon">🎤</div>
+                <div class="bars" id="v-bars">
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                    <div class="v-bar"></div>
+                </div>
+            </div>
+
+            <div class="status-tags">
+                <span class="tag language" id="tag-lang">Português (BR)</span>
+                <button class="tag-btn" id="btn-cancel">Cancelar</button>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <main class="overlay-content">
+            <!-- Mode Toggles -->
+            <div class="view-toggles">
+                <button class="view-btn active" data-view="transcript">Transcrição</button>
+                <button class="view-btn" data-view="response">Resposta IA</button>
+            </div>
+
+            <!-- Views -->
+            <div class="view-section active" id="view-transcript">
+                <div class="transcript-box" id="transcript-box">
+                    <p id="transcript-text" class="placeholder">Aguardando fala...</p>
+                </div>
+            </div>
+
+            <div class="view-section hidden" id="view-response">
+                <div class="response-box" id="response-box">
+                    <div class="response-header">
+                        <span class="ai-label">SUGESTÃO IA</span>
+                        <button class="btn-copy" id="btn-copy">Copiar</button>
+                    </div>
+                    <div class="response-body" id="response-text">
+                        <!-- Typed content goes here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer with Hints REMOVED -->
+
+        <!-- Floating Global Controls Bar -->
+        <div class="floating-controls-wrapper">
+            <div class="floating-bar">
+                <!-- Hamburger Menu Button -->
+                <button class="bar-menu-btn" id="btn-main-menu" title="Menu">
+                    <span class="hamburger">≡</span>
+                </button>
+
+                <div class="bar-divider"></div>
+
+                <!-- Action Buttons -->
+                <div class="bar-action-group">
+                    <button id="btn-ask" class="bar-btn secondary" title="Enviar para IA (Alt+A)">
+                        <span class="key-hint">⌘ ↵</span>
+                        <span>Perguntar</span>
+                    </button>
+
+                    <button id="btn-record" class="bar-btn primary" title="Iniciar Gravação (Alt+R)">
+                        <span class="key-hint">⌘ D</span>
+                        <span>Gravar</span>
+                    </button>
+                </div>
+
+                <div class="bar-divider"></div>
+
+                <!-- Assistant Selector -->
+                <div class="assistant-selector" id="assistant-selector">
+                    <span class="selector-icon">⚙</span>
+                    <span class="selector-label" id="current-assistant-name">General Assistant</span>
+                    <span class="selector-arrow">▾</span>
+                </div>
+
+                <div class="bar-divider"></div>
+
+                <!-- Token Counter -->
+                <div class="bar-info">
+                    <span id="token-counter" class="metric-pill">0 tokens</span>
+                </div>
+            </div>
+
+            <!-- Context Menu -->
+            <div class="bar-context-menu" id="bar-menu">
+                <button data-action="assistants"><span class="icon">🤖</span> Assistentes</button>
+                <button data-action="settings"><span class="icon">⚙️</span> Configurações</button>
+                <button data-action="performance"><span class="icon">📊</span> Desempenho</button>
+                <button data-action="history"><span class="icon">🕒</span> Histórico de Sessões</button>
+                <div class="menu-divider"></div>
+                <button class="exit" data-action="exit"><span class="icon">⏻</span> Sair do App</button>
+            </div>
+
+            <!-- Assistant Dropdown -->
+            <div class="assistant-dropdown hidden" id="assistant-dropdown">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+    </div>
+
+    <script src="renderer/overlay.js"></script>
+</body>
+
+</html>

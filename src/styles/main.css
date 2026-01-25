@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-secondary: #1f2937;
+  --color-background: #070708;
+  --color-surface-low: #0a0a0c;
+  --color-surface: #0f0f11;
+  --color-surface-high: #161618;
+  --color-border: rgba(255, 255, 255, 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  ::selection {
+    background-color: #3b82f6;
+    color: white;
+  }
+
+  body {
+    @apply bg-background text-white antialiased leading-relaxed font-sans;
+    overflow: hidden;
+  }
+
+  /* High contrast for form elements */
+  input,
+  textarea,
+  select {
+    @apply bg-transparent outline-none text-white placeholder-gray-600;
+  }
+
+  select option {
+    @apply bg-[#121214] text-white;
+  }
+}
+
+/* Drag utility */
+.drag-header {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Global contrast utilities */
+.text-high {
+  @apply text-white;
+}
+
+.text-med {
+  @apply text-gray-200;
+}
+
+.text-low {
+  @apply text-gray-400;
+}

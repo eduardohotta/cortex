@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com">
+  <title>Interview Assistant</title>
+  <link rel="stylesheet" href="styles/design-tokens.css">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+
+<body class="premium-theme">
+  <!-- Custom Title Bar for Frameless Window -->
+  <header class="app-title-bar">
+    <div class="drag-region">
+      <span class="tiny-logo">🎯</span>
+      <span class="window-title">Interview Assistant</span>
+    </div>
+    <div class="window-controls">
+      <button id="btn-win-min" class="win-btn" title="Minimizar">−</button>
+      <button id="btn-win-max" class="win-btn" title="Maximizar">□</button>
+      <button id="btn-win-close" class="win-btn close" title="Fechar">×</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <!-- Sidebar: Assistants Management -->
+    <aside class="sidebar" id="app-sidebar">
+      <div class="sidebar-header">
+        <button id="btn-toggle-sidebar" class="sidebar-toggle" title="Expandir/Retrair">
+          <span class="toggle-icon">◀</span>
+        </button>
+        <span class="app-icon">🎯</span>
+        <h2>Assistentes</h2>
+        <button id="btn-settings" class="btn-settings" title="Configurações">
+          <span>⚙️</span>
+        </button>
+      </div>
+
+      <div class="assistant-list" id="assistant-list">
+        <!-- Dynamically populated by JS -->
+      </div>
+
+      <button class="btn-new-assistant" id="btn-add-assistant">
+        <span class="plus">+</span>
+        <span>Criar Novo Assistente</span>
+        <span class="tag">Personalizado</span>
+      </button>
+
+      <div class="sidebar-footer">
+        <button id="btn-panic" class="btn-panic">
+          <span class="icon">🚨</span>
+          PANIC
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content: Settings Panels -->
+    <main class="main-viewport">
+      <header class="view-header">
+        <div class="assistant-title">
+          <input type="text" id="assistant-name-input" placeholder="Assistant Name (optional)"
+            value="General Assistant">
+          <span class="edit-icon">✏️</span>
+        </div>
+
+        <nav class="view-tabs">
+          <button class="tab-btn active" data-tab="system">Sistema</button>
+          <button class="tab-btn" data-tab="tracking">Acompanhamento</button>
+          <button class="tab-btn" data-tab="email">E-mail</button>
+        </nav>
+      </header>
+
+      <div class="content-scrollable">
+        <!-- System Prompt Tab -->
+        <section class="tab-content active" id="tab-system">
+          <div class="prompt-container">
+            <label class="field-label">System Prompt</label>
+            <textarea id="system-prompt" class="premium-textarea small"
+              placeholder="Ex: Você é um assistente sênior..."></textarea>
+
+            <label class="field-label mt-12">Prompt do Assistente</label>
+            <textarea id="assistant-instructions" class="premium-textarea small"
+              placeholder="Instruções específicas de comportamento..."></textarea>
+
+            <label class="field-label mt-12">Contexto Adicional</label>
+            <textarea id="additional-context" class="premium-textarea small"
+              placeholder="Informações sobre a vaga ou empresa..."></textarea>
+          </div>
+
+          <div class="checkbox-setting">
+            <label class="premium-checkbox">
+              <input type="checkbox" id="confidence-filter">
+              <span class="checkmark"></span>
+              <span class="label-text">Responder apenas quando tiver certeza</span>
+            </label>
+            <div class="info-box">
+              <span class="info-icon">ℹ️</span>
+              <p>Quando ativado, o assistente só responderá quando estiver confiante sobre a resposta.</p>
+            </div>
+          </div>
+
+      </div>
+
+      <!-- Note: LLM Config, Audio, Hotkey moved to Global Settings Modal -->
+      </section>
+
+      <!-- Audio Config Card -->
+      <div class="config-card">
+        <div class="card-header">Áudio e Transcrição</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Fonte de Áudio</label>
+            <select id="audio-source" class="premium-select"></select>
+          </div>
+          <div class="form-group">
+            <label>Idioma</label>
+            <select id="language" class="premium-select">
+              <option value="auto">Detectar Auto</option>
+              <option value="pt-BR">Português (BR)</option>
+              <option value="en-US">English (US)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group mt-12">
+          <label>Motor de Voz (STT)</label>
+          <select id="stt-provider" class="premium-select">
+            <option value="groq">🌐 Nuvem (Groq)</option>
+            <option value="whisper-local">💻 Offline (Local)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Hotkeys Config Card -->
+      <div class="config-card">
+        <div class="card-header">Atalhos do Teclado</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Gravar (Alternar)</label>
+            <div class="hotkey-input-container">
+              <input type="text" id="hotkey-record" class="hotkey-input" readonly value="Alt+R">
+              <span class="edit-hint">Clique para alterar</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Perguntar</label>
+            <div class="hotkey-input-container">
+              <input type="text" id="hotkey-ask" class="hotkey-input" readonly value="Alt+A">
+              <span class="edit-hint">Clique para alterar</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      </section>
+
+      <div class="bottom-spacer"></div>
+  </div>
+
+  <!-- Action Bar -->
+  <footer class="view-footer">
+    <button id="btn-save-changes" class="btn-save">
+      <span class="icon">💾</span>
+      Salvar Assistente
+    </button>
+  </footer>
+  </main>
+
+  <!-- Global Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Configurações Globais</h2>
+        <button id="btn-close-settings" class="btn-icon">×</button>
+      </header>
+
+      <div class="modal-body scrollable">
+        <!-- LLM Config Card -->
+        <div class="config-card">
+          <div class="card-header">Configuração da IA (Global)</div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>IA para Respostas</label>
+              <select id="llm-provider" class="premium-select">
+                <option value="openai">OpenAI (ChatGPT)</option>
+                <option value="groq">Groq (Llama - Grátis)</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="google">Google (Gemini)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Modelo</label>
+              <select id="llm-model" class="premium-select"></select>
+            </div>
+          </div>
+
+          <div class="form-group mt-16">
+            <label>API Keys <span class="badge" id="key-count">0 chaves</span></label>
+            <div class="api-keys-container">
+              <div class="keys-list" id="api-keys-list"></div>
+              <div class="add-key-row">
+                <input type="password" id="api-key-input" placeholder="Cole uma nova API key...">
+                <button id="btn-add-key" class="btn-icon-add">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Config Card -->
+        <div class="config-card">
+          <div class="card-header">Áudio e Transcrição</div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Fonte de Áudio</label>
+              <select id="audio-source" class="premium-select"></select>
+            </div>
+            <div class="form-group">
+              <label>Idioma</label>
+              <select id="language" class="premium-select">
+                <option value="auto">Detectar Auto</option>
+                <option value="pt-BR">Português (BR)</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group mt-12">
+            <label>Motor de Voz (STT)</label>
+            <select id="stt-provider" class="premium-select">
+              <option value="groq">🌐 Nuvem (Groq)</option>
+              <option value="whisper-local">💻 Offline (Local)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Hotkeys Config Card -->
+        <div class="config-card">
+          <div class="card-header">Atalhos do Teclado</div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Gravar (Alternar)</label>
+              <div class="hotkey-input-container">
+                <input type="text" id="hotkey-record" class="hotkey-input" readonly value="Alt+R">
+                <span class="edit-hint">Clique para alterar</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Perguntar</label>
+              <div class="hotkey-input-container">
+                <input type="text" id="hotkey-ask" class="hotkey-input" readonly value="Alt+A">
+                <span class="edit-hint">Clique para alterar</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button id="btn-save-global" class="btn-save primary">Salvar Tudo</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Active Status Indicator (local to main window only if needed, but mostly in overlay) -->
+  <div id="active-status-bar" class="active-status-bar hidden">
+    <span class="dot"></span>
+    <span class="text">Gravando...</span>
+  </div>
+  </div>
+
+  <script type="module" src="renderer/main.js"></script>
+</body>
+
+</html>

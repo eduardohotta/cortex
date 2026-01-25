@@ -1,0 +1,48 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+.env
+.env.local
+
+# Build Output
+dist/
+build/
+out/
+release/
+
+# Python / Virtualenv
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS specific
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Electron-builder
+dist_electron/
+*.dmg
+*.exe
+*.zip
+*.AppImage
+
+# Agent & Brain
+.agent/
+brain/
+
+# Temporary files
+tmp/
+temp/
