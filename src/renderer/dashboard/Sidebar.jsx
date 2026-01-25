@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { useApp, ACTIONS } from '../contexts/AppContext';
 import { Bot, Plus, Trash2, Settings, UserPlus, LogOut, Cpu, Command } from 'lucide-react';
 
-export function Sidebar({ onOpenSettings }) {
+export function Sidebar({ onOpenSettings, onDragStart }) {
     const { state, dispatch } = useApp();
     const { assistants, currentAssistantId } = state;
 
@@ -43,13 +43,22 @@ export function Sidebar({ onOpenSettings }) {
         <aside className="w-80 bg-[#070708] border-r border-white/10 flex flex-col h-screen flex-shrink-0">
             {/* Minimal Brand Area */}
             <div className="p-10 flex flex-col gap-8">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
-                        <Command size={26} className="text-black" />
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
+                            <Command size={26} className="text-black" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-xs font-black uppercase tracking-widest text-white">CORTEX</span>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">V1.0.0</span>
+                        </div>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-xs font-black uppercase tracking-widest text-white">CORTEX</span>
-                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">V1.0.0</span>
+                    {/* Drag Handle */}
+                    <div
+                        className="drag-handle p-2 -mr-4 text-gray-700 hover:text-gray-400 cursor-grab active:cursor-grabbing transition-colors"
+                        onPointerDown={onDragStart}
+                    >
+                        <Bot size={18} strokeWidth={1} />
                     </div>
                 </div>
 

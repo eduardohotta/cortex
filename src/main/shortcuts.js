@@ -102,6 +102,10 @@ async function handleAppAction(action, data) {
             }
         }
         broadcastState();
+    } else if (action === 'clear-transcript') {
+        appState.transcriptBuffer = '';
+        appState.tokenCount = 0;
+        broadcastState();
     } else if (action === 'stop-all') {
         const { app } = require('electron');
         console.log('[Main] Stopping all services and quitting...');

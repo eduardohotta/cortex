@@ -11,7 +11,7 @@ let windows = {
     response: null
 };
 
-let isStealthMode = false;
+let isStealthMode = true;
 const PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload.js');
 const DIST_PATH = path.join(__dirname, '..', '..', 'dist', 'renderer');
 
@@ -43,6 +43,8 @@ function createMainWindow() {
         windows.main = null;
         checkAppQuit();
     });
+
+    configureWindow(windows.main);
 
     return windows.main;
 }
@@ -141,7 +143,7 @@ function createResponseWindow() {
 function toggleStealthMode() {
     isStealthMode = !isStealthMode;
     Object.values(windows).forEach(win => {
-        if (win && !win.isDestroyed() && win !== windows.main) {
+        if (win && !win.isDestroyed()) {
             win.setContentProtection(isStealthMode);
         }
     });

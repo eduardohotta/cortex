@@ -16,7 +16,7 @@ export default function FloatingRemote({ standalone = false }) {
     const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
     const [selectedAudio, setSelectedAudio] = useState({ input: 'default', output: 'default' });
     const [isDragging, setIsDragging] = useState(false);
-    const [isStealth, setIsStealth] = useState(false);
+    const [isStealth, setIsStealth] = useState(true);
     const containerRef = useRef(null);
 
     // Load settings and devices

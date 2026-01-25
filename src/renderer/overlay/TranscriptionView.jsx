@@ -127,7 +127,10 @@ export default function TranscriptionView() {
                     </div>
 
                     <button
-                        onClick={() => setHistory([])}
+                        onClick={() => {
+                            setHistory([]);
+                            window.electronAPI?.app?.sendAction({ action: 'clear-transcript' });
+                        }}
                         className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-md text-[8px] font-black text-gray-400 hover:text-white transition-all uppercase"
                     >
                         Limpar

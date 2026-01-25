@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { Sidebar } from './Sidebar';
 import AssistantEditor from './AssistantEditor';
@@ -8,12 +8,44 @@ import { Lightbulb, Minus, X } from 'lucide-react';
 
 function DashboardContent() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const containerRef = useRef(null);
+
+    // Manual Drag Logic
+    const handleDragStart = (e) => {
+        if (e.target.closest('.drag-handle')) {
+            setIsDragging(true);
+            e.target.setPointerCapture(e.pointerId);
+        }
+    };
+
+    useEffect(() => {
+        if (!isDragging) return;
+
+        const handleMouseMove = (e) => {
+            if (window.electronAPI?.app?.move) {
+                window.electronAPI.app.move(e.movementX, e.movementY);
+            }
+        };
+
+        const handleMouseUp = (e) => {
+            setIsDragging(false);
+        };
+
+        window.addEventListener('pointermove', handleMouseMove);
+        window.addEventListener('pointerup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('pointermove', handleMouseMove);
+            window.removeEventListener('pointerup', handleMouseUp);
+        };
+    }, [isDragging]);
 
     return (
         <div className="flex h-screen bg-[#070708] text-gray-200 overflow-hidden font-sans selection:bg-blue-500/30">
 
             {/* Navigation Layer (Integrated vs Personalized list) */}
-            <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
+            <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} onDragStart={handleDragStart} />
 
             {/* Workspace Layer */}
             <main className="flex-1 flex flex-col min-w-0 bg-[#0a0a0c] relative shadow-[inset_1px_0_0_rgba(255,255,255,0.05)]">
