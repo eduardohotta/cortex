@@ -48,32 +48,65 @@ class WhisperService:
 
     def load_model(self):
         try:
-            print(json.dumps({"status": "loading_model", "model": self.model_size}), flush=True)
+            print(json.dumps({"status": "loading_model", "model": self.model_size, "device": self.device}), flush=True)
             self.model = WhisperModel(self.model_size, device=self.device, compute_type=self.compute_type)
             return True
         except Exception as e:
-            print(json.dumps({"error": f"Failed to load model: {str(e)}"}), flush=True)
+            error_msg = str(e)
+            print(json.dumps({"warning": f"Model load failed on {self.device}: {error_msg}"}), flush=True)
+            
+            # Auto-fallback to CPU if CUDA fails (explicit 'cuda' OR 'auto' that tried cuda)
+            if self.device == "cuda" or self.device == "auto":
+                print(json.dumps({"status": "fallback_cpu", "message": "Falling back to CPU..."}), flush=True)
+                try:
+                    self.device = "cpu"
+                    self.compute_type = "int8" # CPU usually needs int8
+                    self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+                    return True
+                except Exception as cpu_e:
+                    print(json.dumps({"error": f"CPU Fallback failed: {str(cpu_e)}"}), flush=True)
+                    return False
+            
+            print(json.dumps({"error": f"Failed to load model: {error_msg}"}), flush=True)
             return False
 
     def transcribe_chunk(self, audio_data):
-        segments, info = self.model.transcribe(
-            audio_data, 
-            beam_size=5, 
-            language=self.language,
-            vad_filter=False,
-            task="transcribe"
-        )
-        
-        results = []
-        for segment in segments:
-            if segment.text.strip():
-                results.append({
-                    "text": segment.text.strip(),
-                    "start": float(segment.start),
-                    "end": float(segment.end),
-                    "probability": float(segment.avg_logprob)
-                })
-        return results, info.language
+        try:
+            segments, info = self.model.transcribe(
+                audio_data, 
+                beam_size=5, 
+                language=self.language,
+                vad_filter=False,
+                task="transcribe"
+            )
+            
+            results = []
+            for segment in segments:
+                if segment.text.strip():
+                    results.append({
+                        "text": segment.text.strip(),
+                        "start": float(segment.start),
+                        "end": float(segment.end),
+                        "probability": float(segment.avg_logprob)
+                    })
+            return results, info.language
+        except Exception as e:
+            error_msg = str(e)
+            # Check if it's a DLL/Provider error typical of CUDA failures
+            if "dll" in error_msg.lower() or "cublas" in error_msg.lower() or "library" in error_msg.lower():
+                 if self.device == "cuda" or self.device == "auto":
+                    print(json.dumps({"status": "fallback_cpu", "message": f"CUDA Error: {error_msg}. Switching to CPU..."}), flush=True)
+                    try:
+                        self.device = "cpu"
+                        self.compute_type = "int8"
+                        self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+                        # Retry transcription recursively once
+                        return self.transcribe_chunk(audio_data)
+                    except Exception as cpu_e:
+                        print(json.dumps({"error": f"CPU Fallback failed during runtime: {str(cpu_e)}"}), flush=True)
+            
+            # Re-raise or return empty if fatal
+            raise e
 
     def audio_callback(self, indata, frames, time, status):
         """This is called (from a separate thread) for each audio block."""
@@ -160,6 +193,7 @@ def main():
     parser = argparse.ArgumentParser(description="Faster-Whisper Transcription Service")
     parser.add_argument("--model", default="base", help="Model size")
     parser.add_argument("--language", default=None, help="Language code (e.g. pt, en)")
+    parser.add_argument("--device", default="cpu", help="Device to use (cpu, cuda, auto)")
     parser.add_argument("--device_id", type=int, help="Audio device ID for direct capture")
     parser.add_argument("--list_devices", action="store_true", help="List available audio devices")
     
@@ -169,7 +203,7 @@ def main():
         print(json.dumps(list_audio_devices()), flush=True)
         return
 
-    service = WhisperService(model_size=args.model, language=args.language)
+    service = WhisperService(model_size=args.model, language=args.language, device=args.device)
     if not service.load_model():
         return
 

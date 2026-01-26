@@ -1,7 +1,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { useApp, ACTIONS } from '../contexts/AppContext';
-import { Bot, Plus, Trash2, Settings, UserPlus, LogOut, Cpu, Command } from 'lucide-react';
+import { Bot, Plus, Trash2, Settings, UserPlus, LogOut, Cpu, Command, Copy } from 'lucide-react';
 
 export function Sidebar({ onOpenSettings, onDragStart }) {
     const { state, dispatch } = useApp();
@@ -18,6 +18,25 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
             systemPrompt: 'Você é um assistente útil...',
             assistantInstructions: 'Seja conciso.',
             additionalContext: ''
+        });
+
+        const updated = await window.electronAPI.settings.getProfiles();
+        dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: updated });
+        dispatch({ type: ACTIONS.SET_ACTIVE_ASSISTANT, payload: newId });
+    };
+
+    const handleClone = async (id, name) => {
+        const original = assistants.find(a => a.id === id);
+        if (!original) return;
+
+        const newId = `assistant_${Date.now()}`;
+        // Exclude ID from the data we send to saveProfile, as saveProfile takes ID as first arg
+        // and likely merges the second arg.
+        const { id: _, ...dataToClone } = original;
+
+        await window.electronAPI.settings.saveProfile(newId, {
+            ...dataToClone,
+            name: `${name} (Cópia)`
         });
 
         const updated = await window.electronAPI.settings.getProfiles();
@@ -42,7 +61,7 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
     return (
         <aside className="w-80 bg-[#070708] border-r border-white/10 flex flex-col h-screen flex-shrink-0">
             {/* Minimal Brand Area */}
-            <div className="p-10 flex flex-col gap-8">
+            <div className="p-10 pb-2 flex flex-col gap-8 shrink-0">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
@@ -61,7 +80,10 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
                         <Bot size={18} strokeWidth={1} />
                     </div>
                 </div>
+            </div>
 
+            {/* Scrollable List */}
+            <div className="flex-1 overflow-y-auto px-10 pb-4 custom-scrollbar">
                 <div className="space-y-3">
                     <span className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] pl-2">Meus Assistentes</span>
                     {assistants.map(a => (
@@ -82,10 +104,28 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
                                 )}>
                                     {a.name}
                                 </span>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
                                     {currentAssistantId === a.id && (
-                                        <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                                        <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] mr-2" />
                                     )}
+
+                                    {/* Clone Button */}
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleClone(a.id, a.name);
+                                        }}
+                                        className={clsx(
+                                            "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all",
+                                            currentAssistantId === a.id
+                                                ? "text-white/60 hover:text-white hover:bg-white/20"
+                                                : "text-gray-600 hover:text-blue-400 hover:bg-blue-500/10"
+                                        )}
+                                        title="Clonar assistente"
+                                    >
+                                        <Copy size={14} />
+                                    </div>
+
                                     {/* Delete Button */}
                                     {a.id !== 'default' && (
                                         <button
@@ -124,7 +164,7 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
                 </div>
             </div>
 
-            <div className="mt-auto p-8 border-t border-white/5 bg-black/20 space-y-2">
+            <div className="p-8 border-t border-white/5 bg-black/20 space-y-2 shrink-0">
                 <button
                     onClick={onOpenSettings}
                     className="w-full flex items-center gap-4 px-5 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white hover:bg-white/5 transition-all"

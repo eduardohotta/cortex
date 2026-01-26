@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onHotkeyAsk: (callback) => ipcRenderer.on('hotkey:ask', () => callback()),
         onStateUpdate: (callback) => ipcRenderer.on('app:state-update', (_, state) => callback(state)),
         onProfilesUpdated: (callback) => ipcRenderer.on('profiles:updated', () => callback()),
+        onCudaFallback: (callback) => ipcRenderer.on('llm:cuda-fallback', (_, data) => callback(data)),
+        openExternal: (url) => require('electron').shell.openExternal(url),
         sendAction: (data) => ipcRenderer.send('app:action', data)
     },
 

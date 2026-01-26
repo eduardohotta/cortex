@@ -242,6 +242,12 @@ class SpeechRecognitionService extends EventEmitter {
 
         const args = ['-u', scriptPath];
         args.push('--model', model);
+
+        // Device configuration
+        const device = this.config.whisperDevice || 'auto';
+        args.push('--device', device);
+        console.log(`[Faster-Whisper] Device selected: ${device.toUpperCase()}`);
+
         if (this.config.language && this.config.language !== 'auto') {
             args.push('--language', this.config.language.split('-')[0]); // 'pt-BR' -> 'pt'
         }
@@ -268,12 +274,17 @@ class SpeechRecognitionService extends EventEmitter {
                                 this.pythonProcess.stdin.write(combined);
                                 this.pendingAudio = [];
                             }
+                        } else if (response.status === 'fallback_cpu') {
+                            console.warn('[Faster-Whisper] CUDA Failed, falling back to CPU');
+                            this.emit('cuda-fallback', { message: response.message });
                         } else if (response.text) {
                             console.log(`[Transcription] ${response.text}`);
                             this.emit('transcript', response);
                         } else if (response.error) {
                             console.error('[Faster-Whisper] Error:', response.error);
                             this.emit('error', new Error(response.error));
+                        } else if (response.warning) {
+                            console.warn('[Faster-Whisper] Warning:', response.warning);
                         }
                     } catch (e) { }
                 }
@@ -283,10 +294,27 @@ class SpeechRecognitionService extends EventEmitter {
                 const msg = data.toString().trim();
                 if (!msg) return;
 
+                // Try to parse JSON error from stderr (some libs output to stderr)
+                try {
+                    const jsonStart = msg.indexOf('{');
+                    if (jsonStart >= 0) {
+                        const potentialJson = msg.substring(jsonStart);
+                        const response = JSON.parse(potentialJson);
+                        if (response.status === 'fallback_cpu') {
+                            console.warn('[Faster-Whisper] CUDA Failed (stderr), falling back to CPU');
+                            this.emit('cuda-fallback', { message: response.message });
+                            return; // Handled
+                        } else if (response.error) {
+                            console.error('[Faster-Whisper] Error (stderr):', response.error);
+                            // Don't emit fatal error if it's just a warning or handled internally,
+                            // but if it's critical, we might need to.
+                            // For now, let the fallback logic handle it or just log it.
+                        }
+                    }
+                } catch (e) { }
+
                 // Check for download progress (tqdm output)
-                // Example: "model.bin:  12%|█         | 150M/2.9G"
                 if (msg.includes('%|') || msg.includes('Downloading') || msg.includes('Fetching')) {
-                    // Try to extract percentage
                     const match = msg.match(/(\d+)%/);
                     if (match) {
                         const percent = parseInt(match[1]);

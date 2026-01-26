@@ -22,6 +22,14 @@ function injectServices(services) {
     llmConnector = services.llmConnector;
     contextManager = services.contextManager;
     speechService = services.speechService;
+
+    // Attach listeners
+    if (speechService) {
+        speechService.on('cuda-fallback', (data) => {
+            console.warn('CUDA Fallback Triggered:', data);
+            broadcastToWindows('llm:cuda-fallback', data);
+        });
+    }
 }
 
 /**
