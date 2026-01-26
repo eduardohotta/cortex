@@ -50,7 +50,8 @@ function registerShortcuts() {
     register('Escape', () => {
         const { windows } = require('./windows');
         Object.entries(windows).forEach(([name, win]) => {
-            if (name !== 'main' && win && !win.isDestroyed()) {
+            // Never hide main or remote (floatingRemote) via Escape
+            if (name !== 'main' && name !== 'remote' && win && !win.isDestroyed()) {
                 win.hide();
             }
         });

@@ -98,10 +98,13 @@ function registerIPCHandlers() {
         try {
             const overlayWindow = getOverlayWindow();
             const provider = settingsManager.get('llmProvider');
+            const model = provider === 'local'
+                ? settingsManager.get('localModel')
+                : settingsManager.get('llmModel');
 
             llmConnector.configure({
                 provider,
-                model: settingsManager.get('llmModel'),
+                model,
                 apiKeys: settingsManager.get('apiKeys', provider),
                 temperature: settingsManager.get('temperature'),
                 maxTokens: settingsManager.get('maxTokens')
@@ -187,6 +190,10 @@ function registerIPCHandlers() {
         }
     });
 
+    ipcMain.handle('model:cancel', (event, filename) => {
+        return modelManager.cancel(filename);
+    });
+
     // Hugging Face Integration
     ipcMain.handle('hf:search', async (event, query) => {
         return await huggingFace.search(query);
@@ -198,6 +205,10 @@ function registerIPCHandlers() {
 
     ipcMain.handle('hf:getRecommended', async () => {
         return await huggingFace.getRecommended();
+    });
+
+    ipcMain.handle('hf:getBestFile', async (event, repoId) => {
+        return await huggingFace.getBestFile(repoId);
     });
 
     // Settings Controls

@@ -135,6 +135,12 @@ class LLMConnector extends EventEmitter {
      */
     async generate(question, systemPrompt = null) {
         const prompt = systemPrompt || this.systemPrompt;
+
+        // If local provider, bypass API key rotation logic
+        if (this.provider === 'local') {
+            return await this.generateLocal(question, prompt);
+        }
+
         let lastError = null;
         let attempts = 0;
         const maxAttempts = Math.max(this.apiKeys.length, 1);
@@ -142,7 +148,7 @@ class LLMConnector extends EventEmitter {
         while (attempts < maxAttempts) {
             const apiKey = this.getCurrentKey();
             if (!apiKey) {
-                throw new Error('No API keys configured');
+                throw new Error(`No API keys configured for ${this.provider}`);
             }
 
             try {
@@ -344,9 +350,7 @@ class LLMConnector extends EventEmitter {
      * Generate using Local LLM (Offline)
      */
     async generateLocal(question, systemPrompt) {
-        // Get configured model from settings or store
-        const config = require('./settings-manager').get('localModel');
-        const activeModelFilename = this.model; // In this context, 'this.model' holds the filename from settings
+        const activeModelFilename = this.model;
 
         if (!activeModelFilename) {
             throw new Error('No local model selected. Please choose a model in settings.');

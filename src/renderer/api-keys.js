@@ -57,10 +57,9 @@ export function updateModelOptions() {
         groq: [{ v: 'llama-3.3-70b-versatile', l: 'Llama 3.3 70B' }, { v: 'llama-3.1-70b-versatile', l: 'Llama 3.1 70B' }],
         anthropic: [{ v: 'claude-3-5-sonnet-20241022', l: 'Claude 3.5 Sonnet' }],
         google: [
-            { v: 'gemini-2.5-pro-preview-05-06', l: 'Gemini 2.5 Pro' },
-            { v: 'gemini-2.5-flash-preview-05-20', l: 'Gemini 2.5 Flash' },
             { v: 'gemini-1.5-pro', l: 'Gemini 1.5 Pro' },
-            { v: 'gemini-1.5-flash', l: 'Gemini 1.5 Flash' }
+            { v: 'gemini-1.5-flash', l: 'Gemini 1.5 Flash' },
+            { v: 'gemini-pro', l: 'Gemini 1.0 Pro' }
         ]
     };
     const list = models[provider] || [];

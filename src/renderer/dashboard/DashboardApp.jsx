@@ -3,7 +3,6 @@ import { AppProvider } from '../contexts/AppContext';
 import { Sidebar } from './Sidebar';
 import AssistantEditor from './AssistantEditor';
 import SettingsModal from './SettingsModal';
-import FloatingRemote from '../components/FloatingRemote';
 import { Lightbulb, Minus, X } from 'lucide-react';
 
 function DashboardContent() {

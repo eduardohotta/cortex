@@ -13,6 +13,7 @@ class ModelManager extends EventEmitter {
         this.baseDir = path.join(os.homedir(), '.antigravity', 'models');
         this.indexFile = path.join(this.baseDir, 'models.json');
         this.models = [];
+        this.activeRequests = new Map(); // Store active http requests
         this.init();
     }
 
@@ -20,6 +21,7 @@ class ModelManager extends EventEmitter {
         if (!fs.existsSync(this.baseDir)) {
             fs.mkdirSync(this.baseDir, { recursive: true });
         }
+        console.log(`[ModelManager] Models directory: ${this.baseDir}`);
         this.loadIndex();
     }
 
@@ -74,47 +76,83 @@ class ModelManager extends EventEmitter {
         this.saveIndex();
 
         return new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(filePath);
+            const downloadFile = (downloadUrl) => {
+                const req = https.get(downloadUrl, (response) => {
+                    // Handle redirects
+                    if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                        console.log(`[ModelManager] Redirecting to: ${response.headers.location}`);
+                        return downloadFile(response.headers.location);
+                    }
 
-            https.get(url, (response) => {
-                if (response.statusCode >= 400) {
-                    file.close();
-                    fs.unlink(filePath, () => { }); // Delete temp file
-                    this.updateStatus(filename, 'error');
-                    return reject(new Error(`HTTP Error: ${response.statusCode}`));
-                }
+                    if (response.statusCode >= 400) {
+                        this.activeRequests.delete(filename);
+                        this.updateStatus(filename, 'error');
+                        return reject(new Error(`HTTP Error: ${response.statusCode}`));
+                    }
 
-                const totalSize = parseInt(response.headers['content-length'], 10);
-                let downloaded = 0;
+                    const filePath = path.join(this.baseDir, filename);
+                    const file = fs.createWriteStream(filePath);
+                    const totalSize = parseInt(response.headers['content-length'], 10);
+                    let downloaded = 0;
 
-                response.on('data', (chunk) => {
-                    downloaded += chunk.length;
-                    const progress = totalSize ? Math.round((downloaded / totalSize) * 100) : 0;
+                    response.on('data', (chunk) => {
+                        downloaded += chunk.length;
+                        const progress = totalSize ? Math.round((downloaded / totalSize) * 100) : 0;
+                        this.updateProgress(filename, progress);
+                        file.write(chunk);
+                    });
 
-                    // Emit progress periodically
-                    this.updateProgress(filename, progress);
-                    file.write(chunk);
+                    response.on('end', () => {
+                        file.end();
+                        this.activeRequests.delete(filename);
+                        this.updateStatus(filename, 'installed');
+                        console.log(`[ModelManager] Download complete: ${filePath}`);
+                        resolve(filePath);
+                    });
+
+                    response.on('error', (err) => {
+                        this.activeRequests.delete(filename);
+                        file.close();
+                        fs.unlink(filePath, () => { });
+                        this.updateStatus(filename, 'error');
+                        reject(err);
+                    });
                 });
 
-                response.on('end', () => {
-                    file.end();
-                    this.updateStatus(filename, 'installed');
-                    resolve(filePath);
-                });
-
-                response.on('error', (err) => {
-                    file.close();
-                    fs.unlink(filePath, () => { });
+                req.on('error', (err) => {
+                    this.activeRequests.delete(filename);
                     this.updateStatus(filename, 'error');
                     reject(err);
                 });
-            }).on('error', (err) => {
-                file.close();
-                fs.unlink(filePath, () => { });
-                this.updateStatus(filename, 'error');
-                reject(err);
-            });
+
+                this.activeRequests.set(filename, req);
+            };
+
+            downloadFile(url);
         });
+    }
+
+    cancel(filename) {
+        const req = this.activeRequests.get(filename);
+        if (req) {
+            console.log(`[ModelManager] Cancelling download: ${filename}`);
+            req.destroy();
+            this.activeRequests.delete(filename);
+
+            // Delete partial file
+            const filePath = path.join(this.baseDir, filename);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+
+            // Remove from index
+            this.models = this.models.filter(m => m.filename !== filename);
+            this.saveIndex();
+
+            this.emit('progress', { filename, status: 'idle', progress: 0 });
+            return true;
+        }
+        return false;
     }
 
     updateProgress(filename, progress) {

@@ -175,6 +175,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         list: () => ipcRenderer.invoke('model:list'),
         delete: (filename) => ipcRenderer.invoke('model:delete', filename),
         download: (config) => ipcRenderer.invoke('model:download', config),
+        cancel: (filename) => ipcRenderer.invoke('model:cancel', filename),
         onProgress: (callback) => {
             const l = (_, data) => callback(data);
             ipcRenderer.on('model:progress', l);
@@ -190,6 +191,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hf: {
         search: (query) => ipcRenderer.invoke('hf:search', query),
         files: (repoId) => ipcRenderer.invoke('hf:files', repoId),
-        getRecommended: () => ipcRenderer.invoke('hf:getRecommended')
+        getRecommended: () => ipcRenderer.invoke('hf:getRecommended'),
+        getBestFile: (repoId) => ipcRenderer.invoke('hf:getBestFile', repoId)
     }
 });

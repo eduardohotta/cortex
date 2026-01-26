@@ -20,7 +20,7 @@ class SettingsManager {
                     language: 'auto',
                     mode: 'hr',
                     llmProvider: 'google',
-                    llmModel: 'gpt-4o',
+                    llmModel: 'gemini-1.5-flash',
                     temperature: 0.7,
                     maxTokens: 500,
                     systemPrompt: this.getDefaultPrompt('rh'),

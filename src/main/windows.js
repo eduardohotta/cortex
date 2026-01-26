@@ -73,6 +73,8 @@ function createRemoteWindow() {
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
+        minimizable: false,
+        maximizable: false,
         show: true,
         webPreferences: {
             nodeIntegration: false,
@@ -110,6 +112,8 @@ function createTranscriptionWindow() {
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: true,
+        minimizable: false,
+        maximizable: false,
         show: false,
         webPreferences: {
             nodeIntegration: false,
@@ -137,6 +141,8 @@ function createResponseWindow() {
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: true,
+        minimizable: false,
+        maximizable: false,
         show: false,
         webPreferences: {
             nodeIntegration: false,

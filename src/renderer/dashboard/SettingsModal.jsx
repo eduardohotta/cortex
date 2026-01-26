@@ -74,7 +74,7 @@ export default function SettingsModal({ isOpen, onClose }) {
 
     const getModelsForProvider = (provider) => {
         const models = {
-            google: [{ id: 'gemini-pro', name: 'Gemini Pro' }, { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }],
+            google: [{ id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }, { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }, { id: 'gemini-pro', name: 'Gemini Pro' }],
             openai: [{ id: 'gpt-4o', name: 'GPT-4o' }, { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }],
             anthropic: [{ id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' }, { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' }],
             groq: [{ id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B' }, { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B' }],
@@ -201,6 +201,8 @@ export default function SettingsModal({ isOpen, onClose }) {
                                                         if (models.length > 0) {
                                                             handleChange('llmModel', models[0].id);
                                                         }
+                                                    } else if (localSettings.localModel) {
+                                                        handleChange('llmModel', localSettings.localModel);
                                                     }
                                                 }}
                                                 className={clsx(
