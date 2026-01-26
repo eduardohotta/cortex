@@ -347,7 +347,7 @@ class LLMConnector extends EventEmitter {
     }
 
     /**
-     * Generate using Local LLM (Offline)
+     * Generate using Local LLM (Offline) - Event-based streaming
      */
     async generateLocal(question, systemPrompt) {
         const activeModelFilename = this.model;
@@ -360,13 +360,36 @@ class LLMConnector extends EventEmitter {
 
         try {
             await localLLM.loadModel(modelPath);
-            const response = await localLLM.generate(question, systemPrompt);
-            this.emit('complete', response);
-            return response;
-        } catch (error) {
-            console.error('Local LLM error:', error);
-            this.emit('error', error);
-            throw error;
+
+            // Forward token events as chunk events immediately
+            const onToken = (text) => {
+                if (text) {
+                    this.emit('chunk', text);
+                }
+            };
+
+            localLLM.on('token', onToken);
+
+            try {
+                // Generate and wait for completion
+                const response = await localLLM.generate(question, systemPrompt);
+
+                // Cleanup listener
+                localLLM.off('token', onToken);
+
+                // Emit completion
+                this.emit('complete', response);
+
+                return response;
+            } catch (err) {
+                localLLM.off('token', onToken);
+                throw err;
+            }
+
+        } catch (err) {
+            console.error('Local LLM error:', err);
+            this.emit('error', err);
+            throw err;
         }
     }
 

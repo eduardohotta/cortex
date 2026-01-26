@@ -33,10 +33,11 @@ function appReducer(state, action) {
             return { ...state, isListening: action.payload };
         case ACTIONS.UPDATE_TRANSCRIPT:
             const { text, isFinal } = action.payload;
-            // Append logic here or handle in component? 
-            // Ideally state holds the source of truth.
-            // If final, push to history. If interim, update current buffer.
-            // Simplify for now: payload is the specific update event data.
+            // RULE: Never update state with empty transcript
+            if (!text || !text.trim()) {
+                return state; // No change if empty
+            }
+            // Payload is the specific update event data.
             return { ...state, lastTranscript: action.payload };
         case ACTIONS.SET_AUDIO_LEVEL:
             return { ...state, audioLevel: action.payload };

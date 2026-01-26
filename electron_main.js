@@ -62,13 +62,31 @@ registerIPCHandlers();
 // App Lifecycle
 // ============================================
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createMainWindow();
   createRemoteWindow();
   createTranscriptionWindow();
   createResponseWindow();
   registerShortcuts();
   setupAudioPipeline();
+
+  // Preload local LLM model if provider is local
+  try {
+    const provider = settingsManager.get('llmProvider');
+    if (provider === 'local') {
+      const localModel = settingsManager.get('localModel');
+      if (localModel) {
+        console.log('[CORTEX] Preloading local LLM model:', localModel);
+        const localLLM = require('./src/services/local-llm-service');
+        const modelManager = require('./src/services/model-manager');
+        const modelPath = modelManager.getPath(localModel);
+        await localLLM.loadModel(modelPath);
+        console.log('[CORTEX] Local model preloaded successfully');
+      }
+    }
+  } catch (err) {
+    console.warn('[CORTEX] Model preload failed (non-fatal):', err.message);
+  }
 });
 
 app.on('window-all-closed', () => {

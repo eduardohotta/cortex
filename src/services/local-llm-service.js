@@ -88,6 +88,7 @@ class LocalLLMService extends EventEmitter {
         }
 
         this.isGenerating = true;
+        console.log('[LocalLLM] Starting generation...');
 
         try {
             // Limpa histórico (não destrói sessão)
@@ -99,18 +100,31 @@ class LocalLLMService extends EventEmitter {
 
             const response = await this.session.prompt(question, {
                 onToken: (token) => {
-                    let text;
+                    let text = '';
                     try {
-                        text = typeof token === 'string'
-                            ? token
-                            : this.llama.decode(token);
-                    } catch {
+                        if (typeof token === 'string') {
+                            text = token;
+                        } else if (this.model && this.model.detokenize) {
+                            // node-llama-cpp v3 uses model.detokenize
+                            text = this.model.detokenize([token]);
+                        } else if (this.llama && this.llama.decode) {
+                            text = this.llama.decode(token);
+                        } else {
+                            // Fallback - just emit the token as-is
+                            text = String.fromCharCode(...(Array.isArray(token) ? token : [token]));
+                        }
+                    } catch (e) {
+                        console.warn('[LocalLLM] Token decode error:', e.message);
                         text = '';
                     }
-                    if (text) this.emit('token', text);
+
+                    if (text) {
+                        this.emit('token', text);
+                    }
                 }
             });
 
+            console.log('[LocalLLM] Generation complete');
             return response;
 
         } catch (err) {

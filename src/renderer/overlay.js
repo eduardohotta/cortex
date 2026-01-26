@@ -261,9 +261,54 @@ function updateWaveform(volume) {
     });
 }
 
+// === Stability Enhancements ===
 let transcriptHistory = [];
+let silenceDebounceTimer = null;
+let lastTranscriptText = '';
+let isUserScrollingTranscript = false;
+let responseUpdateTimer = null;
+
+// Track scroll position for smart auto-scroll
+function setupSmartScroll(container) {
+    if (!container) return;
+    container.addEventListener('scroll', () => {
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+        isUserScrollingTranscript = !isAtBottom;
+    });
+}
+
+// Initialize scroll tracking
+document.addEventListener('DOMContentLoaded', () => {
+    const transcriptContainer = elements.transcriptText?.parentElement;
+    if (transcriptContainer) setupSmartScroll(transcriptContainer);
+});
 
 function updateTranscript(text, isFinal) {
+    // RULE: Never update UI with empty string
+    if (!text || !text.trim()) {
+        // Start silence debounce - don't clear, just ignore
+        if (!silenceDebounceTimer) {
+            silenceDebounceTimer = setTimeout(() => {
+                silenceDebounceTimer = null;
+                // Optionally update UI to show "silence" state without clearing text
+            }, 300);
+        }
+        return;
+    }
+
+    // Clear silence debounce if we have real content
+    if (silenceDebounceTimer) {
+        clearTimeout(silenceDebounceTimer);
+        silenceDebounceTimer = null;
+    }
+
+    // RULE: Only update if text changed (prevent flicker)
+    if (text === lastTranscriptText && !isFinal) {
+        return;
+    }
+    lastTranscriptText = text;
+
     // If we have history, we display it first
     const historyHtml = transcriptHistory.map(t => `<p class="history-block">${t}</p>`).join('');
 
@@ -272,33 +317,48 @@ function updateTranscript(text, isFinal) {
 
     elements.transcriptText.innerHTML = historyHtml + currentHtml;
 
-    // Auto-scroll
+    // Smart auto-scroll - only if user is at bottom
     const container = elements.transcriptText.parentElement;
-    container.scrollTop = container.scrollHeight;
+    if (!isUserScrollingTranscript) {
+        container.scrollTop = container.scrollHeight;
+    }
 
     if (isFinal) {
+        // RULE: Always concatenate - append to history
         transcriptHistory.push(text);
-        // Clear visually for a moment or just keep accumulating?
-        // User wants "text transcrito deve ser acumulado". 
-        // So we push to history. Next update will show history + new interim.
+        lastTranscriptText = '';
     }
 }
 
 function appendResponse(chunk) {
+    // RULE: Never update with empty chunk
+    if (!chunk) return;
+
+    // RULE: Always concatenate (append-only)
     currentResponse += chunk;
+
+    // Clear placeholder text only once
     if (elements.responseText.innerHTML === '<em>IA pensando...</em>' ||
         elements.responseText.innerHTML === '<em>Iniciando consulta...</em>') {
         elements.responseText.innerHTML = '';
     }
 
-    // Basic Markdown
-    let html = currentResponse
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
+    // Debounced display update for smooth rendering
+    if (responseUpdateTimer) return;
 
-    elements.responseText.innerHTML = html;
-    elements.overlay.scrollTop = elements.overlay.scrollHeight;
+    responseUpdateTimer = setTimeout(() => {
+        // Basic Markdown
+        let html = currentResponse
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:3px;">$1</code>')
+            .replace(/\n/g, '<br>');
+
+        elements.responseText.innerHTML = html;
+        elements.overlay.scrollTop = elements.overlay.scrollHeight;
+
+        responseUpdateTimer = null;
+    }, 16); // ~60fps
 }
 
 async function copyResponse() {

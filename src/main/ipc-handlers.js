@@ -93,74 +93,124 @@ function registerIPCHandlers() {
         return true;
     });
 
-    // LLM Process Ask
+    // LLM Process Ask - Event-based streaming (no async iterator)
     ipcMain.handle('llm:process-ask', async (event, { text, historyOverride }) => {
-        try {
-            const overlayWindow = getOverlayWindow();
-            const provider = settingsManager.get('llmProvider');
-            const model = provider === 'local'
-                ? settingsManager.get('localModel')
-                : settingsManager.get('llmModel');
+        return new Promise(async (resolve, reject) => {
+            try {
+                const provider = settingsManager.get('llmProvider');
+                const model = provider === 'local'
+                    ? settingsManager.get('localModel')
+                    : settingsManager.get('llmModel');
 
-            llmConnector.configure({
-                provider,
-                model,
-                apiKeys: settingsManager.get('apiKeys', provider),
-                temperature: settingsManager.get('temperature'),
-                maxTokens: settingsManager.get('maxTokens')
-            });
+                llmConnector.configure({
+                    provider,
+                    model,
+                    apiKeys: settingsManager.get('apiKeys', provider),
+                    temperature: settingsManager.get('temperature'),
+                    maxTokens: settingsManager.get('maxTokens')
+                });
 
-            // Load current profile for behavior settings
-            const currentProfileId = settingsManager.get('currentAssistantId') || 'default';
-            const profile = settingsManager.loadProfile(currentProfileId) || {};
+                // Load current profile for behavior settings
+                const currentProfileId = settingsManager.get('currentAssistantId') || 'default';
+                const profile = settingsManager.loadProfile(currentProfileId) || {};
 
-            // Build base system prompt from profile text fields
-            let systemPrompt = [
-                profile.systemPrompt || settingsManager.get('systemPrompt'),
-                profile.assistantInstructions || settingsManager.get('assistantInstructions'),
-                profile.additionalContext || settingsManager.get('additionalContext')
-            ].filter(p => p).join('\n\n');
+                // Build base system prompt from profile text fields
+                let systemPrompt = [
+                    profile.systemPrompt || settingsManager.get('systemPrompt'),
+                    profile.assistantInstructions || settingsManager.get('assistantInstructions'),
+                    profile.additionalContext || settingsManager.get('additionalContext')
+                ].filter(p => p).join('\n\n');
 
-            // Append behavior directives from profile configuration
-            systemPrompt += settingsManager.buildBehaviorPrompt(profile);
+                // Append behavior directives from profile configuration
+                systemPrompt += settingsManager.buildBehaviorPrompt(profile);
 
-            const history = historyOverride || contextManager.getRecentHistory(3);
-            const queryText = text || appState.transcriptBuffer;
+                const history = historyOverride || contextManager.getRecentHistory(3);
+                const queryText = text || appState.transcriptBuffer;
 
-            if (!queryText || queryText.trim().length === 0) {
-                throw new Error("Sem texto para perguntar.");
+                if (!queryText || queryText.trim().length === 0) {
+                    throw new Error("Sem texto para perguntar.");
+                }
+
+                if (history && history.length > 0) {
+                    const historyText = history.map(h => `Human: ${h.question}\nAI: ${h.answer}`).join('\n\n');
+                    systemPrompt += `\n\n## Contexto anterior:\n${historyText}\n\n## Pergunta Atual:\n`;
+                }
+
+                broadcastToWindows('llm:response-start');
+
+                let fullResponse = '';
+
+                // Event-based streaming - listen for chunks
+                const onChunk = (chunk) => {
+                    if (chunk) {
+                        fullResponse += chunk;
+                        broadcastToWindows('llm:response-chunk', chunk);
+                    }
+                };
+
+                const onComplete = (response) => {
+                    broadcastToWindows('llm:response-end');
+
+                    if (fullResponse.length > 5) {
+                        contextManager.recordTurn(queryText, fullResponse);
+                        appState.transcriptBuffer = '';
+                        appState.tokenCount = 0;
+                        broadcastState();
+                    }
+
+                    // Cleanup listeners
+                    llmConnector.off('chunk', onChunk);
+                    llmConnector.off('complete', onComplete);
+                    llmConnector.off('error', onError);
+
+                    resolve(fullResponse);
+                };
+
+                const onError = (err) => {
+                    llmConnector.off('chunk', onChunk);
+                    llmConnector.off('complete', onComplete);
+                    llmConnector.off('error', onError);
+
+                    broadcastToWindows('llm:error', err.message);
+                    reject(err);
+                };
+
+                llmConnector.on('chunk', onChunk);
+                llmConnector.on('complete', onComplete);
+                llmConnector.on('error', onError);
+
+                // Start generation (non-blocking for streaming)
+                try {
+                    const result = await llmConnector.generate(queryText, systemPrompt);
+                    // For providers that return directly (non-streaming)
+                    if (typeof result === 'string' && !fullResponse) {
+                        fullResponse = result;
+                        broadcastToWindows('llm:response-chunk', result);
+                        broadcastToWindows('llm:response-end');
+
+                        if (fullResponse.length > 5) {
+                            contextManager.recordTurn(queryText, fullResponse);
+                            appState.transcriptBuffer = '';
+                            appState.tokenCount = 0;
+                            broadcastState();
+                        }
+
+                        llmConnector.off('chunk', onChunk);
+                        llmConnector.off('complete', onComplete);
+                        llmConnector.off('error', onError);
+
+                        resolve(fullResponse);
+                    }
+                } catch (genError) {
+                    onError(genError);
+                }
+
+            } catch (error) {
+                console.error('LLM Process failed:', error);
+                broadcastToWindows('llm:error', error.message);
+                reject(error);
             }
-
-            if (history && history.length > 0) {
-                const historyText = history.map(h => `Human: ${h.question}\nAI: ${h.answer}`).join('\n\n');
-                systemPrompt += `\n\n## Contexto anterior:\n${historyText}\n\n## Pergunta Atual:\n`;
-            }
-
-            broadcastToWindows('llm:response-start');
-
-            const responseStream = await llmConnector.generate(queryText, systemPrompt);
-            let fullResponse = '';
-
-            for await (const chunk of responseStream) {
-                fullResponse += chunk;
-                broadcastToWindows('llm:response-chunk', chunk);
-            }
-
-            broadcastToWindows('llm:response-end');
-
-            if (fullResponse.length > 5) {
-                contextManager.recordTurn(queryText, fullResponse);
-                appState.transcriptBuffer = '';
-                appState.tokenCount = 0;
-                broadcastState();
-            }
-
-            return fullResponse;
-        } catch (error) {
-            console.error('LLM Process failed:', error);
-            broadcastToWindows('llm:error', error.message);
-            throw error;
-        }
+        });
     });
 
     // Model & Offline Engine Controls
