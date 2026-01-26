@@ -1,139 +1,144 @@
 const path = require('path');
+const os = require('os');
 const EventEmitter = require('events');
 
 class LocalLLMService extends EventEmitter {
     constructor() {
         super();
         this.llama = null;
+        this.llamaCppModule = null;
+
         this.model = null;
         this.context = null;
+        this.sequence = null;
         this.session = null;
-        this.isLoading = false;
+
         this.activeModelPath = null;
-        this.llamaCppModule = null; // Store the full module
+        this.isLoading = false;
+        this.isGenerating = false;
     }
 
+    /* =========================
+       INIT
+       ========================= */
     async init() {
         if (!this.llamaCppModule) {
-            // Dynamic import for ESM module
             this.llamaCppModule = await import('node-llama-cpp');
             const { getLlama } = this.llamaCppModule;
             this.llama = await getLlama();
         }
     }
 
-    /**
-     * Load a GGUF model from the given path
-     */
-    async loadModel(modelPath) {
-        if (this.isLoading) throw new Error('Model is currently loading');
-        if (this.activeModelPath === modelPath && this.model) return; // Already loaded
+    /* =========================
+       LOAD MODEL
+       ========================= */
+    async loadModel(modelPath, options = {}) {
+        if (this.activeModelPath === modelPath && this.model) return;
+        if (this.isLoading) throw new Error('Model is already loading');
 
         this.isLoading = true;
-        this.emit('loading', { status: 'loading', model: path.basename(modelPath) });
+        this.emit('loading', { model: path.basename(modelPath) });
 
         try {
             await this.init();
+            await this.unload();
 
-            // Unload previous model if exists
-            if (this.model) {
-                if (this.context) await this.context.dispose();
-                if (this.model) await this.model.dispose();
-                this.context = null;
-                this.model = null;
-                this.session = null;
-            }
+            const threads =
+                options.threads ||
+                Math.max(2, Math.min(os.cpus().length, 8));
 
-            console.log(`[LocalLLM] Loading model from ${modelPath}...`);
+            const contextSize = options.contextSize || 4096;
 
-            // Load new model
             this.model = await this.llama.loadModel({
-                modelPath: modelPath
+                modelPath
             });
 
-            // Create context
             this.context = await this.model.createContext({
-                threads: 4, // Default to 4 threads
-                contextSize: 2048 // Default context size
+                threads,
+                contextSize
             });
+
+            this.sequence = this.context.getSequence();
 
             const { LlamaChatSession } = this.llamaCppModule;
             this.session = new LlamaChatSession({
-                contextSequence: this.context.getSequence()
+                contextSequence: this.sequence
             });
 
             this.activeModelPath = modelPath;
-            console.log('[LocalLLM] Model loaded successfully');
             this.emit('loaded', { model: path.basename(modelPath) });
 
-        } catch (error) {
-            console.error('[LocalLLM] Failed to load model:', error);
-            this.emit('error', error);
-            throw error;
+        } catch (err) {
+            this.emit('error', err);
+            throw err;
         } finally {
             this.isLoading = false;
         }
     }
 
-    /**
-     * Generate response for a given prompt
-     */
-    async generate(question, systemPrompt) {
-        if (!this.model || !this.session) {
-            throw new Error('No local model loaded. Please download/select a model in Settings.');
+    /* =========================
+       GENERATE
+       ========================= */
+    async generate(question, systemPrompt = '') {
+        if (!this.session) {
+            throw new Error('No local model loaded');
+        }
+        if (this.isGenerating) {
+            throw new Error('Generation already in progress');
         }
 
+        this.isGenerating = true;
+
         try {
-            await this.init();
-            const { LlamaChatSession } = this.llamaCppModule;
+            // Limpa histórico (não destrói sessão)
+            this.session.resetChatHistory?.();
 
-            // If system prompt changed significantly, might need to reset history,
-            // but for now we just use the session. node-llama-cpp handles system prompt in init usually,
-            // or via prompt wrappers.
-            // LlamaChatSession handles history automatically.
+            if (systemPrompt) {
+                this.session.setSystemPrompt?.(systemPrompt);
+            }
 
-            // Note: Simplest implementation - we treat each generate call as part of the session.
-            // If we want stateless per-question (like the online engines usually are in this app),
-            // we might want to clear history or create new session.
-            // For Interview Assistant, usually context is 1-turn or short lived.
-
-            // Let's reset session for each "Interview Question" to avoid context pollution from previous disparate questions,
-            // unless we want conversation history. The online engines in this app seem to send "question" + "system prompt".
-            // Implementation choice: Reset session history to ensure "fresh" answer based on system prompt + question.
-
-            this.session = new LlamaChatSession({
-                contextSequence: this.context.getSequence(),
-                systemPrompt: systemPrompt
-            });
-
-            console.log('[LocalLLM] Generating response...');
             const response = await this.session.prompt(question, {
-                onToken: (chunk) => {
-                    const text = this.llama.de2(chunk);
-                    this.emit('token', text);
+                onToken: (token) => {
+                    let text;
+                    try {
+                        text = typeof token === 'string'
+                            ? token
+                            : this.llama.decode(token);
+                    } catch {
+                        text = '';
+                    }
+                    if (text) this.emit('token', text);
                 }
             });
 
             return response;
 
-        } catch (error) {
-            console.error('[LocalLLM] Generation failed:', error);
-            throw error;
+        } catch (err) {
+            this.emit('error', err);
+            throw err;
+        } finally {
+            this.isGenerating = false;
         }
     }
 
-    /**
-     * Unload current model to free RAM
-     */
+    /* =========================
+       UNLOAD
+       ========================= */
     async unload() {
-        if (this.context) await this.context.dispose();
-        if (this.model) await this.model.dispose();
+        try {
+            if (this.session) await this.session.dispose();
+            if (this.sequence) await this.sequence.dispose();
+            if (this.context) await this.context.dispose();
+            if (this.model) await this.model.dispose();
+        } catch { }
+
+        this.session = null;
+        this.sequence = null;
         this.context = null;
         this.model = null;
-        this.session = null;
         this.activeModelPath = null;
+
         this.emit('unloaded');
-        console.log('[LocalLLM] Model unloaded');
     }
 }
 
