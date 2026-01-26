@@ -18,11 +18,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
         toggleStealth: () => ipcRenderer.invoke('overlay:toggleStealth'),
         setResponse: (data) => ipcRenderer.invoke('overlay:setResponse', data),
         setQuestion: (data) => ipcRenderer.invoke('overlay:setQuestion', data),
-        onUpdateResponse: (callback) => ipcRenderer.on('update-response', (_, data) => callback(data)),
-        onUpdateQuestion: (callback) => ipcRenderer.on('update-question', (_, data) => callback(data)),
-        onCopyResponse: (callback) => ipcRenderer.on('copy-response', () => callback()),
-        onStateChanged: (callback) => ipcRenderer.on('overlay:state-changed', (_, isVisible) => callback(isVisible)),
-        onStealthChanged: (callback) => ipcRenderer.on('overlay:stealth-changed', (_, isStealth) => callback(isStealth)),
+        onUpdateResponse: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('update-response', l);
+            return () => ipcRenderer.removeListener('update-response', l);
+        },
+        onUpdateQuestion: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('update-question', l);
+            return () => ipcRenderer.removeListener('update-question', l);
+        },
+        onCopyResponse: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('copy-response', l);
+            return () => ipcRenderer.removeListener('copy-response', l);
+        },
+        onStateChanged: (callback) => {
+            const l = (_, isVisible) => callback(isVisible);
+            ipcRenderer.on('overlay:state-changed', l);
+            return () => ipcRenderer.removeListener('overlay:state-changed', l);
+        },
+        onStealthChanged: (callback) => {
+            const l = (_, isStealth) => callback(isStealth);
+            ipcRenderer.on('overlay:stealth-changed', l);
+            return () => ipcRenderer.removeListener('overlay:stealth-changed', l);
+        },
         setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', ignore)
     },
 
@@ -34,11 +54,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
         toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
         showDashboard: () => ipcRenderer.invoke('app:show-dashboard'),
         move: (x, y) => ipcRenderer.send('window:move', { x, y }),
-        onHotkeyRecord: (callback) => ipcRenderer.on('hotkey:record', () => callback()),
-        onHotkeyAsk: (callback) => ipcRenderer.on('hotkey:ask', () => callback()),
-        onStateUpdate: (callback) => ipcRenderer.on('app:state-update', (_, state) => callback(state)),
-        onProfilesUpdated: (callback) => ipcRenderer.on('profiles:updated', () => callback()),
-        onCudaFallback: (callback) => ipcRenderer.on('llm:cuda-fallback', (_, data) => callback(data)),
+        onHotkeyRecord: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('hotkey:record', l);
+            return () => ipcRenderer.removeListener('hotkey:record', l);
+        },
+        onHotkeyAsk: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('hotkey:ask', l);
+            return () => ipcRenderer.removeListener('hotkey:ask', l);
+        },
+        onStateUpdate: (callback) => {
+            const l = (_, state) => callback(state);
+            ipcRenderer.on('app:state-update', l);
+            return () => ipcRenderer.removeListener('app:state-update', l);
+        },
+        onProfilesUpdated: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('profiles:updated', l);
+            return () => ipcRenderer.removeListener('profiles:updated', l);
+        },
+        onCudaFallback: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('llm:cuda-fallback', l);
+            return () => ipcRenderer.removeListener('llm:cuda-fallback', l);
+        },
         openExternal: (url) => require('electron').shell.openExternal(url),
         sendAction: (data) => ipcRenderer.send('app:action', data)
     },
@@ -47,28 +87,72 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getDevices: () => ipcRenderer.invoke('audio:getDevices'),
         startCapture: (deviceId, sttProvider) => ipcRenderer.invoke('audio:startCapture', deviceId, sttProvider),
         stopCapture: () => ipcRenderer.invoke('audio:stopCapture'),
-        onAudioData: (callback) => ipcRenderer.on('audio:data', (_, data) => callback(data)),
-        onVolume: (callback) => ipcRenderer.on('audio:volume', (_, volume) => callback(volume))
+        onAudioData: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('audio:data', l);
+            return () => ipcRenderer.removeListener('audio:data', l);
+        },
+        onVolume: (callback) => {
+            const l = (_, volume) => callback(volume);
+            ipcRenderer.on('audio:volume', l);
+            return () => ipcRenderer.removeListener('audio:volume', l);
+        }
     },
 
     transcription: {
         start: (config) => ipcRenderer.invoke('transcription:start', config),
         stop: () => ipcRenderer.invoke('transcription:stop'),
-        onTranscript: (callback) => ipcRenderer.on('transcription:result', (_, data) => callback(data)),
-        onDownloadProgress: (callback) => ipcRenderer.on('transcription:download-progress', (_, data) => callback(data))
+        onTranscript: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('transcription:result', l);
+            return () => ipcRenderer.removeListener('transcription:result', l);
+        },
+        onDownloadProgress: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('transcription:download-progress', l);
+            return () => ipcRenderer.removeListener('transcription:download-progress', l);
+        }
     },
 
     llm: {
         generate: (prompt, systemPrompt) => ipcRenderer.invoke('llm:generate', prompt, systemPrompt),
         processAsk: (data) => ipcRenderer.invoke('llm:process-ask', data),
         testKey: (apiKey) => ipcRenderer.invoke('llm:testKey', apiKey),
-        onResponseStart: (callback) => ipcRenderer.on('llm:response-start', () => callback()),
-        onResponseChunk: (callback) => ipcRenderer.on('llm:response-chunk', (_, chunk) => callback(chunk)),
-        onResponseEnd: (callback) => ipcRenderer.on('llm:response-end', () => callback()),
-        onKeyActive: (callback) => ipcRenderer.on('llm:keyActive', (_, data) => callback(data)),
-        onKeyFailed: (callback) => ipcRenderer.on('llm:keyFailed', (_, data) => callback(data)),
-        onQuotaExceeded: (callback) => ipcRenderer.on('llm:quotaExceeded', (_, data) => callback(data)),
-        onError: (callback) => ipcRenderer.on('llm:error', (_, msg) => callback(msg))
+        onResponseStart: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('llm:response-start', l);
+            return () => ipcRenderer.removeListener('llm:response-start', l);
+        },
+        onResponseChunk: (callback) => {
+            const l = (_, chunk) => callback(chunk);
+            ipcRenderer.on('llm:response-chunk', l);
+            return () => ipcRenderer.removeListener('llm:response-chunk', l);
+        },
+        onResponseEnd: (callback) => {
+            const l = () => callback();
+            ipcRenderer.on('llm:response-end', l);
+            return () => ipcRenderer.removeListener('llm:response-end', l);
+        },
+        onKeyActive: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('llm:keyActive', l);
+            return () => ipcRenderer.removeListener('llm:keyActive', l);
+        },
+        onKeyFailed: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('llm:keyFailed', l);
+            return () => ipcRenderer.removeListener('llm:keyFailed', l);
+        },
+        onQuotaExceeded: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('llm:quotaExceeded', l);
+            return () => ipcRenderer.removeListener('llm:quotaExceeded', l);
+        },
+        onError: (callback) => {
+            const l = (_, msg) => callback(msg);
+            ipcRenderer.on('llm:error', l);
+            return () => ipcRenderer.removeListener('llm:error', l);
+        }
     },
 
     settings: {
@@ -80,19 +164,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getProfiles: () => ipcRenderer.invoke('settings:getProfiles'),
         deleteProfile: (name) => ipcRenderer.invoke('settings:deleteProfile', name),
         refreshShortcuts: () => ipcRenderer.invoke('settings:refreshShortcuts'),
-        onSettingsChanged: (callback) => ipcRenderer.on('settings:changed', (_, data) => callback(data))
+        onSettingsChanged: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('settings:changed', l);
+            return () => ipcRenderer.removeListener('settings:changed', l);
+        }
     },
 
     model: {
         list: () => ipcRenderer.invoke('model:list'),
         delete: (filename) => ipcRenderer.invoke('model:delete', filename),
         download: (config) => ipcRenderer.invoke('model:download', config),
-        onProgress: (callback) => ipcRenderer.on('model:progress', (_, data) => callback(data)),
-        onUpdated: (callback) => ipcRenderer.on('model:updated', (_, data) => callback(data))
+        onProgress: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('model:progress', l);
+            return () => ipcRenderer.removeListener('model:progress', l);
+        },
+        onUpdated: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('model:updated', l);
+            return () => ipcRenderer.removeListener('model:updated', l);
+        }
     },
 
     hf: {
         search: (query) => ipcRenderer.invoke('hf:search', query),
-        files: (repoId) => ipcRenderer.invoke('hf:files', repoId)
+        files: (repoId) => ipcRenderer.invoke('hf:files', repoId),
+        getRecommended: () => ipcRenderer.invoke('hf:getRecommended')
     }
 });

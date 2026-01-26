@@ -196,6 +196,10 @@ function registerIPCHandlers() {
         return await huggingFace.getFiles(repoId);
     });
 
+    ipcMain.handle('hf:getRecommended', async () => {
+        return await huggingFace.getRecommended();
+    });
+
     // Settings Controls
     ipcMain.handle('settings:get', (event, key, provider) => settingsManager.get(key, provider));
     ipcMain.handle('settings:set', (event, key, value, provider) => {

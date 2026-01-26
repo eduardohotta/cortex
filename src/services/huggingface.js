@@ -11,16 +11,14 @@ class HuggingFaceService {
 
     request(url) {
         return new Promise((resolve, reject) => {
-            const req = https.get(url, { headers: this.headers, timeout: 10000 }, (res) => {
+            https.get(url, { headers: this.headers }, (res) => {
                 let data = '';
 
                 if (res.statusCode !== 200) {
-                    return reject(
-                        new Error(`HF API error ${res.statusCode}`)
-                    );
+                    return reject(new Error(`HF API error ${res.statusCode}`));
                 }
 
-                res.on('data', chunk => (data += chunk));
+                res.on('data', chunk => data += chunk);
                 res.on('end', () => {
                     try {
                         resolve(JSON.parse(data));
@@ -28,62 +26,54 @@ class HuggingFaceService {
                         reject(e);
                     }
                 });
-            });
-
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error('HF request timeout'));
-            });
-
-            req.on('error', reject);
+            }).on('error', reject);
         });
     }
 
     /* =========================
-       SEARCH MODELS
+       POPULAR GGUF MODELS (FAST)
        ========================= */
-    async search(query, limit = 20) {
+    async getRecommended() {
         const url =
             `${this.baseUrl}/models` +
-            `?search=${encodeURIComponent(query)}` +
-            `&filter=gguf` +
+            `?filter=gguf` +
             `&sort=downloads` +
             `&direction=-1` +
-            `&limit=${limit}`;
+            `&limit=100`;
 
         const results = await this.request(url);
 
-        return results.map(r => ({
-            id: r.id,
-            name: r.id,
-            downloads: r.downloads || 0,
+        const isLargeModel = (id) => {
+            return /(7b|8b|13b|34b|70b)/i.test(id);
+        };
+
+        const isGarbage = (id) => {
+            return /(fp16|f32|experimental|test)/i.test(id);
+        };
+
+        const filtered = results.filter(r => {
+            const id = r.id.toLowerCase();
+            return (
+                r.downloads >= 20000 &&
+                isLargeModel(id) &&
+                !isGarbage(id)
+            );
+        });
+
+        return filtered.slice(0, 12).map(r => ({
+            repoId: r.id,
+            name: r.id.split('/').pop(),
+            parameters: this.detectParams(r.id),
+            downloads: r.downloads,
             likes: r.likes || 0,
-            tags: r.tags || []
+            tags: r.tags || [],
+            provider: 'huggingface'
         }));
     }
 
-    /* =========================
-       LIST GGUF FILES
-       ========================= */
-    async getFiles(repoId) {
-        const url = `${this.baseUrl}/models/${repoId}`;
-        const data = await this.request(url);
-
-        if (!Array.isArray(data.siblings)) return [];
-
-        return data.siblings
-            .filter(f => f.rfilename.endsWith('.gguf'))
-            .map(f => ({
-                file: f.rfilename,
-                size: f.size || 0,
-                quant: this.detectQuant(f.rfilename),
-                url: `https://huggingface.co/${repoId}/resolve/main/${f.rfilename}`
-            }));
-    }
-
-    detectQuant(filename) {
-        const m = filename.match(/Q\d(_\w+)?|Q\d/g);
-        return m ? m[0] : 'unknown';
+    detectParams(id) {
+        const match = id.match(/(7b|8b|13b|34b|70b)/i);
+        return match ? match[0].toUpperCase() : 'Unknown';
     }
 }
 
