@@ -176,15 +176,86 @@ class SettingsManager {
     }
 
     /**
-     * Save a profile configuration
+     * Save a profile configuration with behavior defaults
      */
     saveProfile(name, config) {
+        // Smart defaults for behavior settings
+        const defaults = {
+            responseStyle: 'short',
+            initiativeLevel: 'minimal',
+            responseSize: 'medium',
+            admitIgnorance: true,
+            askClarification: true,
+            avoidGeneric: true,
+            negativeRules: ''
+        };
+
         const profiles = this.store.get('profiles', {});
         profiles[name] = {
+            ...defaults,
             ...config,
             savedAt: new Date().toISOString()
         };
         this.store.set('profiles', profiles);
+    }
+
+    /**
+     * Build behavior prompt directives from profile settings
+     */
+    buildBehaviorPrompt(profile = {}) {
+        const directives = [];
+
+        // Response style directives
+        const styleMap = {
+            short: 'Seja DIRETO e BREVE. Sem introduções ou conclusões vazias. Vá direto ao ponto.',
+            didactic: 'Responda de forma DIDÁTICA, passo a passo. Numere as etapas quando apropriado.',
+            strategic: 'Responda de forma ESTRATÉGICA: dê a resposta principal e adicione um insight ou recomendação relevante.',
+            code: 'CÓDIGO PRIMEIRO: quando aplicável, mostre o código antes da explicação. Mantenha explicações mínimas.'
+        };
+        if (profile.responseStyle && styleMap[profile.responseStyle]) {
+            directives.push(styleMap[profile.responseStyle]);
+        }
+
+        // Initiative level directives
+        const initiativeMap = {
+            minimal: 'Responda APENAS o que foi perguntado. Não adicione informações extras.',
+            brief: 'Pode complementar com observações breves se muito relevantes.',
+            proactive: 'Sugira melhorias ou alertas quando identificar oportunidades ou riscos.'
+        };
+        if (profile.initiativeLevel && initiativeMap[profile.initiativeLevel]) {
+            directives.push(initiativeMap[profile.initiativeLevel]);
+        }
+
+        // Response size directives
+        const sizeMap = {
+            very_short: 'MÁXIMO 2-3 linhas por resposta. Seja extremamente conciso.',
+            medium: 'Mantenha respostas de tamanho moderado. Máximo 3-5 pontos.',
+            detailed: 'Pode dar respostas detalhadas quando a complexidade exigir.'
+        };
+        if (profile.responseSize && sizeMap[profile.responseSize]) {
+            directives.push(sizeMap[profile.responseSize]);
+        }
+
+        // Validation / Anti-hallucination directives
+        if (profile.admitIgnorance) {
+            directives.push('Se não souber a resposta, ADMITA explicitamente. Nunca invente informações.');
+        }
+        if (profile.askClarification) {
+            directives.push('Se a pergunta for ambígua ou muito vaga, peça esclarecimento antes de responder.');
+        }
+        if (profile.avoidGeneric) {
+            directives.push('EVITE respostas genéricas. Seja específico e direto ao contexto.');
+        }
+
+        // Negative rules
+        if (profile.negativeRules && profile.negativeRules.trim()) {
+            const rules = profile.negativeRules.split('\n').filter(r => r.trim()).map(r => `- ${r.trim()}`);
+            if (rules.length > 0) {
+                directives.push('\n## O que NÃO fazer:\n' + rules.join('\n'));
+            }
+        }
+
+        return directives.length > 0 ? '\n\n## Comportamento:\n' + directives.join('\n') : '';
     }
 
     /**

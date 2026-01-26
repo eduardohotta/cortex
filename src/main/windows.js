@@ -44,7 +44,18 @@ function createMainWindow() {
         checkAppQuit();
     });
 
-    configureWindow(windows.main);
+    // Don't set alwaysOnTop for main window so overlay can appear above it
+    // configureWindow(windows.main); // Removed to keep main window below overlays
+
+    // BUT we still need Stealth Mode (Content Protection)
+    windows.main.setContentProtection(isStealthMode);
+
+    // When main window gets focus, ensure remote stays visible
+    windows.main.on('focus', () => {
+        if (windows.remote && !windows.remote.isDestroyed()) {
+            windows.remote.moveTop();
+        }
+    });
 
     return windows.main;
 }

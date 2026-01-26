@@ -58,7 +58,17 @@ export default function FloatingRemote({ standalone = false }) {
         if (window.electronAPI?.overlay?.onStealthChanged) {
             window.electronAPI.overlay.onStealthChanged(setIsStealth);
         }
-    }, []);
+
+        // Listen for profile updates (when saved from dashboard)
+        if (window.electronAPI?.app?.onProfilesUpdated) {
+            window.electronAPI.app.onProfilesUpdated(async () => {
+                const profiles = await window.electronAPI.settings.getProfiles();
+                if (profiles) {
+                    dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: profiles });
+                }
+            });
+        }
+    }, [dispatch]);
 
     const formatHotkey = (hotkey) => {
         if (!hotkey) return '';
@@ -86,8 +96,12 @@ export default function FloatingRemote({ standalone = false }) {
         }
     };
 
-    const handleSelectAgent = (id) => {
+    const handleSelectAgent = async (id) => {
         dispatch({ type: ACTIONS.SET_ACTIVE_ASSISTANT, payload: id });
+        // Also save to settings so backend can read it
+        if (window.electronAPI?.settings?.set) {
+            await window.electronAPI.settings.set('currentAssistantId', id);
+        }
         setIsAgentMenuOpen(false);
     };
 
@@ -309,6 +323,53 @@ export default function FloatingRemote({ standalone = false }) {
                         </div>
                     )}
 
+                </div>
+
+                {/* Agent Selector */}
+                <div className="relative">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsAgentMenuOpen(!isAgentMenuOpen);
+                        }}
+                        className={clsx(
+                            "h-7 px-2 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold",
+                            isAgentMenuOpen
+                                ? "text-white bg-white/12"
+                                : "text-gray-400 hover:text-white hover:bg-white/10"
+                        )}
+                        style={{ WebkitAppRegion: 'no-drag' }}
+                    >
+                        <BrainCircuit size={13} className="text-blue-400" />
+                        <span className="max-w-[80px] truncate">
+                            {assistants.find(a => a.id === currentAssistantId)?.name || 'Assistente'}
+                        </span>
+                        <ChevronUp size={12} className={clsx("transition-transform", isAgentMenuOpen && "rotate-180")} />
+                    </button>
+
+                    {isAgentMenuOpen && (
+                        <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#121214]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-2 z-[9999] max-h-64 overflow-y-auto">
+                            <div className="text-[9px] font-black uppercase text-gray-600 tracking-widest px-2 py-1.5">
+                                Trocar Assistente
+                            </div>
+                            {assistants.map(agent => (
+                                <button
+                                    key={agent.id}
+                                    onClick={() => handleSelectAgent(agent.id)}
+                                    className={clsx(
+                                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] transition-all",
+                                        agent.id === currentAssistantId
+                                            ? "bg-blue-500/20 text-blue-400 font-bold"
+                                            : "text-gray-400 hover:bg-white/5 hover:text-white"
+                                    )}
+                                >
+                                    <span className="text-sm">{agent.icon || '🤖'}</span>
+                                    <span className="flex-1 text-left truncate">{agent.name}</span>
+                                    {agent.id === currentAssistantId && <Check size={12} />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="w-px h-6 bg-white/8" />

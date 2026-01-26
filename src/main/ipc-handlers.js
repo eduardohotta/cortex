@@ -99,11 +99,19 @@ function registerIPCHandlers() {
                 maxTokens: settingsManager.get('maxTokens')
             });
 
+            // Load current profile for behavior settings
+            const currentProfileId = settingsManager.get('currentAssistantId') || 'default';
+            const profile = settingsManager.loadProfile(currentProfileId) || {};
+
+            // Build base system prompt from profile text fields
             let systemPrompt = [
-                settingsManager.get('systemPrompt'),
-                settingsManager.get('assistantInstructions'),
-                settingsManager.get('additionalContext')
+                profile.systemPrompt || settingsManager.get('systemPrompt'),
+                profile.assistantInstructions || settingsManager.get('assistantInstructions'),
+                profile.additionalContext || settingsManager.get('additionalContext')
             ].filter(p => p).join('\n\n');
+
+            // Append behavior directives from profile configuration
+            systemPrompt += settingsManager.buildBehaviorPrompt(profile);
 
             const history = historyOverride || contextManager.getRecentHistory(3);
             const queryText = text || appState.transcriptBuffer;
