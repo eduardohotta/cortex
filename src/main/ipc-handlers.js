@@ -160,6 +160,42 @@ function registerIPCHandlers() {
         }
     });
 
+    // Model & Offline Engine Controls
+    const modelManager = require('../services/model-manager');
+    const huggingFace = require('../services/huggingface');
+
+    // Model Manager Events -> Broadcast to UI
+    modelManager.on('progress', (data) => broadcastToWindows('model:progress', data));
+    modelManager.on('updated', (models) => broadcastToWindows('model:updated', models));
+
+    // List Local Models
+    ipcMain.handle('model:list', () => modelManager.list());
+
+    // Delete Local Model
+    ipcMain.handle('model:delete', async (event, filename) => {
+        modelManager.delete(filename);
+        return { success: true };
+    });
+
+    // Download Model
+    ipcMain.handle('model:download', async (event, { url, filename, metadata }) => {
+        try {
+            await modelManager.download(url, filename, metadata);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Hugging Face Integration
+    ipcMain.handle('hf:search', async (event, query) => {
+        return await huggingFace.search(query);
+    });
+
+    ipcMain.handle('hf:files', async (event, repoId) => {
+        return await huggingFace.getFiles(repoId);
+    });
+
     // Settings Controls
     ipcMain.handle('settings:get', (event, key, provider) => settingsManager.get(key, provider));
     ipcMain.handle('settings:set', (event, key, value, provider) => {

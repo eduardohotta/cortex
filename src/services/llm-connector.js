@@ -4,6 +4,8 @@
  */
 
 const EventEmitter = require('events');
+const localLLM = require('./local-llm-service');
+const modelManager = require('./model-manager');
 
 class LLMConnector extends EventEmitter {
     constructor() {
@@ -198,6 +200,8 @@ class LLMConnector extends EventEmitter {
                 return await this.generateAnthropic(question, systemPrompt, apiKey);
             case 'google':
                 return await this.generateGoogle(question, systemPrompt, apiKey);
+            case 'local':
+                return await this.generateLocal(question, systemPrompt);
             default:
                 throw new Error(`Unknown provider: ${this.provider}`);
         }
@@ -331,6 +335,32 @@ class LLMConnector extends EventEmitter {
 
         } catch (error) {
             console.error('Google Gemini error:', error);
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Generate using Local LLM (Offline)
+     */
+    async generateLocal(question, systemPrompt) {
+        // Get configured model from settings or store
+        const config = require('./settings-manager').get('localModel');
+        const activeModelFilename = this.model; // In this context, 'this.model' holds the filename from settings
+
+        if (!activeModelFilename) {
+            throw new Error('No local model selected. Please choose a model in settings.');
+        }
+
+        const modelPath = modelManager.getPath(activeModelFilename);
+
+        try {
+            await localLLM.loadModel(modelPath);
+            const response = await localLLM.generate(question, systemPrompt);
+            this.emit('complete', response);
+            return response;
+        } catch (error) {
+            console.error('Local LLM error:', error);
             this.emit('error', error);
             throw error;
         }

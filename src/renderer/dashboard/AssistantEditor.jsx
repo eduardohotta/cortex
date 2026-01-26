@@ -212,7 +212,7 @@ export default function AssistantEditor() {
         <div className="flex flex-col h-full bg-[#0a0a0c] animate-in fade-in duration-700 p-12">
 
             {/* Header: Assistant Name (Centered or Left as per Image 2) */}
-            <div className="flex justify-center mb-10">
+            <div className="flex justify-center mb-10 no-drag">
                 <input
                     type="text"
                     value={formData.name}
@@ -223,7 +223,7 @@ export default function AssistantEditor() {
             </div>
 
             {/* Main Editor Card */}
-            <div className="flex-1 flex flex-col bg-[#0d0d0f] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
+            <div className="flex-1 flex flex-col bg-[#0d0d0f] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl no-drag">
 
                 {/* Tabs Area */}
                 <div className="flex border-b border-white/5">
@@ -372,16 +372,29 @@ export default function AssistantEditor() {
                 <div className="p-8 border-t border-white/5 bg-black/40 flex justify-end items-center gap-6">
                     {showStatus && (
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-green-500 animate-in fade-in zoom-in duration-300">
-                            Persona salva com sucesso
+                            Assistente salvo com sucesso
                         </span>
                     )}
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="px-12 py-4 bg-white hover:bg-gray-200 text-black rounded-2xl flex items-center gap-3 font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 transition-all disabled:opacity-50"
+                        className="
+        px-10 py-2.5
+        bg-white text-black
+        rounded-xl
+        flex items-center gap-2
+        text-[10px] font-black uppercase tracking-[0.25em]
+        shadow-xl
+        hover:bg-gray-100
+        active:scale-95
+        transition-all
+        disabled:opacity-40
+    "
                     >
-                        <Save size={16} /> Salvar
+                        <Save size={14} />
+                        Salvar
                     </button>
+
                 </div>
             </div>
         </div>

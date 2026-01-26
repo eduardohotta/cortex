@@ -81,5 +81,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
         deleteProfile: (name) => ipcRenderer.invoke('settings:deleteProfile', name),
         refreshShortcuts: () => ipcRenderer.invoke('settings:refreshShortcuts'),
         onSettingsChanged: (callback) => ipcRenderer.on('settings:changed', (_, data) => callback(data))
+    },
+
+    model: {
+        list: () => ipcRenderer.invoke('model:list'),
+        delete: (filename) => ipcRenderer.invoke('model:delete', filename),
+        download: (config) => ipcRenderer.invoke('model:download', config),
+        onProgress: (callback) => ipcRenderer.on('model:progress', (_, data) => callback(data)),
+        onUpdated: (callback) => ipcRenderer.on('model:updated', (_, data) => callback(data))
+    },
+
+    hf: {
+        search: (query) => ipcRenderer.invoke('hf:search', query),
+        files: (repoId) => ipcRenderer.invoke('hf:files', repoId)
     }
 });

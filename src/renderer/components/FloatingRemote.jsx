@@ -184,7 +184,7 @@ export default function FloatingRemote({ standalone = false }) {
             >
                 {/* Drag Handle */}
                 <div
-                    className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing"
+                    className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-400 cursor-grab active:cursor-grabbing"
                     onPointerDown={handleDragStart}
                 >
                     <GripVertical size={14} />

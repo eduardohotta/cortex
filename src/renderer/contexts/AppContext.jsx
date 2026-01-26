@@ -64,39 +64,42 @@ export function AppProvider({ children }) {
     useEffect(() => {
         if (!window.electronAPI) return;
 
-        const removeAudioListener = window.electronAPI.audio.onVolume((level) => {
-            dispatch({ type: ACTIONS.SET_AUDIO_LEVEL, payload: level });
-        });
+        try {
+            const removeAudioListener = window.electronAPI.audio?.onVolume?.((level) => {
+                dispatch({ type: ACTIONS.SET_AUDIO_LEVEL, payload: level });
+            });
 
-        const removeTranscriptListener = window.electronAPI.transcription.onTranscript((data) => {
-            dispatch({ type: ACTIONS.UPDATE_TRANSCRIPT, payload: data });
-        });
+            const removeTranscriptListener = window.electronAPI.transcription?.onTranscript?.((data) => {
+                dispatch({ type: ACTIONS.UPDATE_TRANSCRIPT, payload: data });
+            });
 
-        const removeAskListener = window.electronAPI.app.onHotkeyAsk(() => {
-            // Trigger the same logic as the "Perguntar" button
-            window.electronAPI.llm.processAsk({ text: null, manual: true });
-            // Switch view automatically if on overlay
-            dispatch({ type: ACTIONS.SET_VIEW, payload: 'response' });
-        });
+            const removeAskListener = window.electronAPI.app?.onHotkeyAsk?.(() => {
+                // Trigger the same logic as the "Perguntar" button
+                window.electronAPI.llm?.processAsk?.({ text: null, manual: true });
+                // Switch view automatically if on overlay
+                dispatch({ type: ACTIONS.SET_VIEW, payload: 'response' });
+            });
 
-        const removeStateListener = window.electronAPI.app.onStateUpdate((newState) => {
-            if (newState.isListening !== undefined) {
-                dispatch({ type: ACTIONS.SET_LISTENING, payload: newState.isListening });
-            }
-            if (newState.tokenCount !== undefined) {
-                dispatch({ type: ACTIONS.SET_TOKENS, payload: newState.tokenCount });
-            }
-        });
+            const removeStateListener = window.electronAPI.app?.onStateUpdate?.((newState) => {
+                if (newState.isListening !== undefined) {
+                    dispatch({ type: ACTIONS.SET_LISTENING, payload: newState.isListening });
+                }
+                if (newState.tokenCount !== undefined) {
+                    dispatch({ type: ACTIONS.SET_TOKENS, payload: newState.tokenCount });
+                }
+            });
 
-        // Initial Load
-        window.electronAPI.settings.getProfiles().then(profiles => {
-            if (profiles) dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: profiles });
-        });
+            // Initial Load
+            window.electronAPI.settings?.getProfiles?.().then(profiles => {
+                if (profiles) dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: profiles });
+            }).catch(err => console.error("Failed to load profiles:", err));
+
+        } catch (error) {
+            console.error("AppContext IPC Error:", error);
+        }
 
         return () => {
-            // Cleanup listeners if possible (our preload returns remove callback? No, it used .on)
-            // Electron .on returns 'this', not a disposer. 
-            // We need to implement removeListener in preload or just ignore for main window lifecycle.
+            // Cleanup listeners if possible
         };
     }, []);
 

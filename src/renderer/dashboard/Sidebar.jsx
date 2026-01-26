@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { useApp, ACTIONS } from '../contexts/AppContext';
 import { Bot, Plus, Trash2, Settings, UserPlus, LogOut, Cpu, Command, Copy } from 'lucide-react';
 
-export function Sidebar({ onOpenSettings, onDragStart }) {
+export function Sidebar({ onOpenSettings }) {
     const { state, dispatch } = useApp();
     const { assistants, currentAssistantId } = state;
 
@@ -59,125 +59,158 @@ export function Sidebar({ onOpenSettings, onDragStart }) {
     };
 
     return (
-        <aside className="w-80 bg-[#070708] border-r border-white/10 flex flex-col h-screen flex-shrink-0">
-            {/* Minimal Brand Area */}
-            <div className="p-10 pb-2 flex flex-col gap-8 shrink-0">
+        <aside className="w-80 bg-[#070708] border-r border-white/5 flex flex-col h-screen flex-shrink-0">
+
+            {/* ================= BRAND ================= */}
+            <div className="px-8 pt-8 pb-4 flex flex-col gap-6 shrink-0">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
-                            <Command size={26} className="text-black" />
+                        <div className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center shadow-[0_10px_40px_rgba(255,255,255,0.15)]">
+                            <Command size={24} className="text-black" />
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-black uppercase tracking-widest text-white">CORTEX</span>
-                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">V1.0.0</span>
+
+                        <div className="flex flex-col leading-tight">
+                            <span className="text-[11px] font-black uppercase tracking-widest text-white">
+                                CORTEX
+                            </span>
+                            <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-gray-600">
+                                v1.0.0
+                            </span>
                         </div>
                     </div>
-                    {/* Drag Handle */}
-                    <div
-                        className="drag-handle p-2 -mr-4 text-gray-700 hover:text-gray-400 cursor-grab active:cursor-grabbing transition-colors"
-                        onPointerDown={onDragStart}
-                    >
+
+                    <div className="p-2 text-gray-700">
                         <Bot size={18} strokeWidth={1} />
                     </div>
                 </div>
             </div>
 
-            {/* Scrollable List */}
-            <div className="flex-1 overflow-y-auto px-10 pb-4 custom-scrollbar">
+            {/* ================= LIST ================= */}
+            <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar" style={{ WebkitAppRegion: 'no-drag' }}>
                 <div className="space-y-3">
-                    <span className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] pl-2">Meus Assistentes</span>
-                    {assistants.map(a => (
-                        <button
-                            key={a.id}
-                            onClick={() => handleSelect(a.id)}
-                            className={clsx(
-                                'w-full group flex flex-col p-5 rounded-2xl transition-all duration-300 border text-left relative',
-                                currentAssistantId === a.id
-                                    ? 'bg-blue-600 border-blue-500 shadow-2xl translate-x-1'
-                                    : 'border-white/5 hover:bg-white/[0.04] hover:border-white/10'
-                            )}
-                        >
-                            <div className="flex items-center justify-between w-full mb-1">
-                                <span className={clsx(
-                                    "text-xs font-black tracking-tight uppercase",
-                                    currentAssistantId === a.id ? "text-white" : "text-gray-400 group-hover:text-white"
-                                )}>
-                                    {a.name}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                    {currentAssistantId === a.id && (
-                                        <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] mr-2" />
-                                    )}
 
-                                    {/* Clone Button */}
-                                    <div
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleClone(a.id, a.name);
-                                        }}
+                    <span className="block text-[9px] font-black uppercase tracking-[0.35em] text-gray-400 px-2 mb-2">
+                        Assistentes
+                    </span>
+
+                    {assistants.map(a => {
+                        const active = currentAssistantId === a.id;
+
+                        return (
+                            <button
+                                key={a.id}
+                                onClick={() => handleSelect(a.id)}
+                                className={clsx(
+                                    "group relative w-full rounded-xl border px-4 py-3 text-left transition-all duration-200",
+                                    active
+                                        ? "bg-blue-600/15 border-blue-500/40 shadow-[0_10px_30px_rgba(59,130,246,0.25)] translate-x-1"
+                                        : "bg-black/20 border-white/5 hover:bg-white/[0.04] hover:border-white/10"
+                                )}
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <span
                                         className={clsx(
-                                            "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all",
-                                            currentAssistantId === a.id
-                                                ? "text-white/60 hover:text-white hover:bg-white/20"
-                                                : "text-gray-600 hover:text-blue-400 hover:bg-blue-500/10"
+                                            "text-[11px] font-black uppercase tracking-tight",
+                                            active
+                                                ? "text-white"
+                                                : "text-gray-400 group-hover:text-white"
                                         )}
-                                        title="Clonar assistente"
                                     >
-                                        <Copy size={14} />
-                                    </div>
+                                        {a.name}
+                                    </span>
 
-                                    {/* Delete Button */}
-                                    {a.id !== 'default' && (
+                                    <div className="flex items-center gap-1">
+                                        {active && (
+                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.9)] mr-1" />
+                                        )}
+
+                                        {/* Clone */}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleDelete(a.id, a.name);
+                                                handleClone(a.id, a.name);
                                             }}
                                             className={clsx(
-                                                "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all",
-                                                currentAssistantId === a.id
-                                                    ? "text-white/60 hover:text-white hover:bg-white/20"
-                                                    : "text-gray-600 hover:text-red-500 hover:bg-red-500/10"
+                                                "p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all",
+                                                active
+                                                    ? "text-white/60 hover:text-white hover:bg-white/10"
+                                                    : "text-gray-600 hover:text-blue-400 hover:bg-blue-500/10"
                                             )}
-                                            title="Deletar assistente"
+                                            title="Clonar"
                                         >
-                                            <Trash2 size={14} />
+                                            <Copy size={13} />
                                         </button>
-                                    )}
-                                </div>
-                            </div>
-                            <span className={clsx(
-                                "text-[9px] font-bold uppercase tracking-widest",
-                                currentAssistantId === a.id ? "text-white/60" : "text-gray-700"
-                            )}>
-                                {a.id.startsWith('assistant_') ? 'Personalizado' : 'Sistema'}
-                            </span>
-                        </button>
-                    ))}
 
+                                        {/* Delete */}
+                                        {a.id !== 'default' && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(a.id, a.name);
+                                                }}
+                                                className={clsx(
+                                                    "p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all",
+                                                    active
+                                                        ? "text-white/60 hover:text-white hover:bg-white/10"
+                                                        : "text-gray-600 hover:text-red-500 hover:bg-red-500/10"
+                                                )}
+                                                title="Excluir"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <span
+                                    className={clsx(
+                                        "text-[8px] font-bold uppercase tracking-widest",
+                                        active ? "text-white/50" : "text-gray-700"
+                                    )}
+                                >
+                                    {a.id.startsWith('assistant_') ? 'Personalizado' : 'Sistema'}
+                                </span>
+                            </button>
+                        );
+                    })}
+
+                    {/* Create */}
                     <button
                         onClick={handleCreate}
-                        className="w-full mt-4 flex items-center gap-4 p-5 border-2 border-dashed border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-gray-600 hover:border-blue-500/30 hover:text-blue-400 hover:bg-blue-500/5 transition-all"
+                        className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl
+                                border border-dashed border-white/10
+                                text-[9px] font-black uppercase tracking-[0.25em]
+                                text-gray-400 hover:text-blue-400
+                                hover:border-blue-500/40 hover:bg-blue-500/5 transition-all"
                     >
-                        <Plus size={18} /> Novo Persona
+                        <Plus size={16} /> Novo Assistente
                     </button>
                 </div>
             </div>
 
-            <div className="p-8 border-t border-white/5 bg-black/20 space-y-2 shrink-0">
+            {/* ================= FOOTER ================= */}
+            <div className="px-6 py-5 border-t border-white/5 bg-black/30 space-y-2 shrink-0" style={{ WebkitAppRegion: 'no-drag' }}>
+
                 <button
                     onClick={onOpenSettings}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl
+                           text-[9px] font-black uppercase tracking-widest
+                           text-gray-500 hover:text-white hover:bg-white/5 transition-all"
                 >
-                    <Settings size={20} /> Cockpit
+                    <Settings size={18} /> Configurações
                 </button>
+
                 <button
                     onClick={() => window.electronAPI.app.panic()}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-900 hover:text-red-500 transition-all"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl
+                           text-[9px] font-black uppercase tracking-widest
+                           text-red-900 hover:text-red-500 hover:bg-red-500/10 transition-all"
                 >
-                    <LogOut size={20} /> Finalizar
+                    <LogOut size={18} /> Finalizar
                 </button>
+
             </div>
         </aside>
     );
+
 }
