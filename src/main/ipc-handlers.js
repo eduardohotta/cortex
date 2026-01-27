@@ -213,6 +213,13 @@ function registerIPCHandlers() {
         });
     });
 
+    // Stop LLM Generation
+    ipcMain.handle('llm:stop-generation', async () => {
+        console.log('[IPC] Stopping generation...');
+        llmConnector.abort();
+        return { success: true };
+    });
+
     // Model & Offline Engine Controls
     const modelManager = require('../services/model-manager');
     const huggingFace = require('../services/huggingface');

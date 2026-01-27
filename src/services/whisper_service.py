@@ -45,6 +45,7 @@ class WhisperService:
         self.model = None
         self.is_running = False
         self.audio_queue = queue.Queue()
+        self.last_text = ""
 
     def load_model(self):
         try:
@@ -72,23 +73,53 @@ class WhisperService:
 
     def transcribe_chunk(self, audio_data):
         try:
+            # Enable VAD filter to ignore silence
             segments, info = self.model.transcribe(
                 audio_data, 
                 beam_size=5, 
                 language=self.language,
-                vad_filter=False,
-                task="transcribe"
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+                task="transcribe",
+                condition_on_previous_text=False # Prevent hallucinations loop
             )
             
+            # Common Whisper hallucinations to ignore
+            HALLUCINATIONS = [
+                "Obrigado.", "Obrigado!", "Tchau.", "Tchau!", 
+                "Obrigado por assistir.", "Obrigado por assistir!", 
+                "Legenda por", "Amara.org", "Sous-titres", 
+                "Untertitel", "subtitle", "Caption"
+            ]
+
             results = []
             for segment in segments:
-                if segment.text.strip():
-                    results.append({
-                        "text": segment.text.strip(),
-                        "start": float(segment.start),
-                        "end": float(segment.end),
-                        "probability": float(segment.avg_logprob)
-                    })
+                text = segment.text.strip()
+                
+                # Filter 1: Empty or too short
+                if not text or len(text) < 2:
+                    continue
+
+                # Filter 2: Known hallucinations (case insensitive)
+                if any(h.lower() in text.lower() for h in HALLUCINATIONS):
+                    continue
+                
+                # Filter 3: Repetitive loops common in hallucinations
+                if len(text) > 10 and text == self.last_text:
+                    continue
+
+                # Filter 4: Very low probability (optional heuristic)
+                if segment.avg_logprob < -1.0: # Adjust threshold as needed
+                    continue
+
+                results.append({
+                    "text": text,
+                    "start": float(segment.start),
+                    "end": float(segment.end),
+                    "probability": float(segment.avg_logprob)
+                })
+                self.last_text = text # Store for repetition check
+
             return results, info.language
         except Exception as e:
             error_msg = str(e)

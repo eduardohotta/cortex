@@ -79,8 +79,8 @@ class LocalLLMService extends EventEmitter {
     /* =========================
        GENERATE
        ========================= */
-    async generate(question, systemPrompt = '') {
-        if (!this.session) {
+    async generate(question, systemPrompt = '', options = {}) {
+        if (!this.context) {
             throw new Error('No local model loaded');
         }
         if (this.isGenerating) {
@@ -90,37 +90,62 @@ class LocalLLMService extends EventEmitter {
         this.isGenerating = true;
         console.log('[LocalLLM] Starting generation...');
 
-        try {
-            // Limpa histórico (não destrói sessão)
-            this.session.resetChatHistory?.();
+        let lastChunk = '';
+        let repeatCount = 0;
 
-            if (systemPrompt) {
-                this.session.setSystemPrompt?.(systemPrompt);
+        try {
+            // 🔥 CRIA NOVA SEQUENCE (evita loop)
+            if (this.sequence) {
+                await this.sequence.dispose();
             }
 
+            this.sequence = this.context.getSequence();
+
+            const { LlamaChatSession } = this.llamaCppModule;
+            this.session = new LlamaChatSession({
+                contextSequence: this.sequence,
+                systemPrompt
+            });
+
             const response = await this.session.prompt(question, {
+                temperature: 0.3,
+                topP: 0.9,
+                repeatPenalty: 1.15,
+                maxTokens: 220,
+                stop: ['\n\n', 'Entrevistador:', 'Pergunta:'],
+
                 onToken: (token) => {
                     let text = '';
                     try {
                         if (typeof token === 'string') {
                             text = token;
-                        } else if (this.model && this.model.detokenize) {
-                            // node-llama-cpp v3 uses model.detokenize
+                        } else if (this.model?.detokenize) {
                             text = this.model.detokenize([token]);
-                        } else if (this.llama && this.llama.decode) {
+                        } else if (this.llama?.decode) {
                             text = this.llama.decode(token);
-                        } else {
-                            // Fallback - just emit the token as-is
-                            text = String.fromCharCode(...(Array.isArray(token) ? token : [token]));
                         }
-                    } catch (e) {
-                        console.warn('[LocalLLM] Token decode error:', e.message);
+                    } catch {
                         text = '';
                     }
 
-                    if (text) {
-                        this.emit('token', text);
+                    if (!text) return;
+
+                    // 🛑 DETECTOR DE LOOP
+                    if (text === lastChunk) {
+                        repeatCount++;
+                        if (repeatCount > 6) {
+                            console.warn('[LocalLLM] Loop detected, aborting');
+                            this.session.abort();
+                            return;
+                        }
+                    } else {
+                        repeatCount = 0;
                     }
+
+                    lastChunk = text;
+
+                    // 🔥 STREAM REAL
+                    this.emit('token', text);
                 }
             });
 
@@ -128,12 +153,18 @@ class LocalLLMService extends EventEmitter {
             return response;
 
         } catch (err) {
+            if (err.name === 'AbortError' || err.message === 'Aborted') {
+                console.log('[LocalLLM] Generation aborted');
+                this.emit('aborted');
+                return null;
+            }
             this.emit('error', err);
             throw err;
         } finally {
             this.isGenerating = false;
         }
     }
+
 
     /* =========================
        UNLOAD

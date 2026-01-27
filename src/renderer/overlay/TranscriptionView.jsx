@@ -159,6 +159,13 @@ export default function TranscriptionView() {
 
     return (
         <div className="h-full flex flex-col bg-transparent">
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+            `}</style>
+
             {/* Simple minimal header */}
             <div className="h-10 flex-shrink-0 flex items-center justify-center border-b border-white/5 bg-black/20">
                 <span className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500">Transcrição</span>

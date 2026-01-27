@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Copy, Check, Loader2, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
+import { Copy, Check, Loader2, Sparkles, AlertCircle, CheckCircle, Square } from 'lucide-react';
 import clsx from 'clsx';
 
 // Display update debounce for smooth 60fps rendering
@@ -98,6 +98,10 @@ export default function ResponseView() {
         window.electronAPI?.app?.sendAction({ action: 'stop-all' });
     };
 
+    const handleStop = () => {
+        window.electronAPI?.llm?.stopGeneration();
+    };
+
     const handleCopy = async () => {
         if (!responseRef.current) return;
         try {
@@ -148,6 +152,13 @@ export default function ResponseView() {
 
     return (
         <div className="h-full flex flex-col bg-transparent">
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+            `}</style>
+
             {/* Header - flex-shrink-0 keeps it visible */}
             <div className="px-4 h-12 flex-shrink-0 flex items-center justify-between border-b border-white/5 bg-black/20">
                 <div className="flex items-center gap-3">
@@ -156,6 +167,15 @@ export default function ResponseView() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {(status === 'processing' || status === 'streaming') && (
+                        <button
+                            onClick={handleStop}
+                            className="px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase rounded-md hover:bg-red-600 active:scale-95 transition-all flex items-center gap-1.5"
+                        >
+                            <Square size={8} fill="currentColor" />
+                            Parar
+                        </button>
+                    )}
                     <button
                         onClick={handleEndSession}
                         className="px-3 py-1 bg-red-600/10 border border-red-500/20 text-red-500 text-[9px] font-black uppercase rounded-md hover:bg-red-600/20 active:scale-95 transition-all"

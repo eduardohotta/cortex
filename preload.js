@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     llm: {
         generate: (prompt, systemPrompt) => ipcRenderer.invoke('llm:generate', prompt, systemPrompt),
         processAsk: (data) => ipcRenderer.invoke('llm:process-ask', data),
+        stopGeneration: () => ipcRenderer.invoke('llm:stop-generation'),
         testKey: (apiKey) => ipcRenderer.invoke('llm:testKey', apiKey),
         onResponseStart: (callback) => {
             const l = () => callback();
