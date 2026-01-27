@@ -310,10 +310,10 @@ function updateTranscript(text, isFinal) {
     lastTranscriptText = text;
 
     // If we have history, we display it first
-    const historyHtml = transcriptHistory.map(t => `<p class="history-block">${t}</p>`).join('');
+    const historyHtml = transcriptHistory.map(t => `<span class="history-block mr-1">${t}</span>`).join('');
 
     // Current interim or final chunk
-    const currentHtml = `<p class="current-block ${isFinal ? 'final' : 'interim'}">${text}</p>`;
+    const currentHtml = `<span class="current-block ${isFinal ? 'final' : 'interim'}">${text}</span>`;
 
     elements.transcriptText.innerHTML = historyHtml + currentHtml;
 
@@ -324,8 +324,11 @@ function updateTranscript(text, isFinal) {
     }
 
     if (isFinal) {
-        // RULE: Always concatenate - append to history
-        transcriptHistory.push(text);
+        // RULE: Deduplicate - only add if different from last segment
+        const lastSegment = transcriptHistory[transcriptHistory.length - 1];
+        if (text && text.trim() && text !== lastSegment) {
+            transcriptHistory.push(text);
+        }
         lastTranscriptText = '';
     }
 }

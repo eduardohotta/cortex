@@ -14,7 +14,13 @@ class LLMConnector extends EventEmitter {
         this.model = 'gpt-4o';
         this.config = {
             temperature: 0.7,
-            maxTokens: 500
+            maxTokens: 500,
+            topP: 0.9,
+            topK: 40,
+            repeatPenalty: 1.15,
+            threads: 4,
+            gpuLayers: 0,
+            batchSize: 512
         };
         this.systemPrompt = '';
 
@@ -39,177 +45,6 @@ class LLMConnector extends EventEmitter {
         }
     }
 
-    // ... (rest of configuration methods remain same)
-
-    /**
-     * Generate a response with automatic key rotation on failure
-     */
-    async generate(question, systemPrompt = null) {
-        // Cancel previous generation if exists
-        if (this.abortController) {
-            this.abort();
-        }
-
-        // Create new controller for this generation
-        this.abortController = new AbortController();
-        const signal = this.abortController.signal;
-
-        const prompt = systemPrompt || this.systemPrompt;
-
-        try {
-            // If local provider, bypass API key rotation logic
-            if (this.provider === 'local') {
-                return await this.generateLocal(question, prompt, signal);
-            }
-
-            // ... (rest of key rotation logic, needs passing signal)
-            // For now, I will just focus on local provider update here as requested
-            // But ideally I should update generateWithKey too. 
-            // Since user specifically asked for local loop prevention, focusing on local.
-
-            // Wait, I need to clean up controller if successful
-            // But let's look at generateLocal signature update
-
-            let lastError = null;
-            let attempts = 0;
-            const maxAttempts = Math.max(this.apiKeys.length, 1);
-
-            while (attempts < maxAttempts) {
-                if (signal.aborted) throw new Error('Aborted');
-
-                const apiKey = this.getCurrentKey();
-                if (!apiKey) {
-                    throw new Error(`No API keys configured for ${this.provider}`);
-                }
-
-                try {
-                    const result = await this.generateWithKey(question, prompt, apiKey, signal);
-                    this.abortController = null;
-                    return result;
-                } catch (error) {
-                    if (error.name === 'AbortError' || signal.aborted) {
-                        this.abortController = null;
-                        throw error;
-                    }
-
-                    // ... error handling ...
-                    lastError = error;
-                    // ... logging ...
-                    const isQuota = this.isQuotaError(error);
-                    // ...
-                    if (isQuota) {
-                        this.markKeyFailed(apiKey);
-                        this.rotateKey();
-                        attempts++;
-                    } else {
-                        throw error;
-                    }
-                }
-            }
-            throw new Error(`All ${this.apiKeys.length} API keys exhausted. Last error: ${lastError?.message}`);
-
-        } catch (error) {
-            this.abortController = null;
-            if (error.name === 'AbortError' || error.message === 'Aborted') {
-                console.log('[LLMConnector] Generation aborted by user/system');
-                return null; // or throw?
-            }
-            throw error;
-        }
-    }
-
-    /**
-     * Generate with a specific API key
-     */
-    async generateWithKey(question, systemPrompt, apiKey, signal) {
-        // ... debug logs ...
-        switch (this.provider) {
-            // ... other providers need to accept signal ...
-            // For brevity I'll assume only local needs update right now or I update only local call above
-            // But actually generateWithKey calls specific methods.
-            case 'openai':
-                return await this.generateOpenAI(question, systemPrompt, apiKey, signal);
-            case 'groq':
-                return await this.generateGroq(question, systemPrompt, apiKey, signal);
-            case 'anthropic':
-                return await this.generateAnthropic(question, systemPrompt, apiKey, signal);
-            case 'google':
-                return await this.generateGoogle(question, systemPrompt, apiKey, signal);
-            case 'local':
-                // This path shouldn't be reached as I handle local above, but for completeness:
-                return await this.generateLocal(question, systemPrompt, signal);
-            default:
-                throw new Error(`Unknown provider: ${this.provider}`);
-        }
-    }
-
-    // ... (rest of methods)
-
-    /**
-     * Generate using Local LLM (Offline) - Event-based streaming
-     */
-    async generateLocal(question, systemPrompt, signal) {
-        const activeModelFilename = this.model;
-
-        if (!activeModelFilename) {
-            throw new Error('No local model selected. Please choose a model in settings.');
-        }
-
-        const modelPath = modelManager.getPath(activeModelFilename);
-
-        try {
-            await localLLM.loadModel(modelPath);
-
-            // Forward token events as chunk events immediately
-            const onToken = (text) => {
-                if (text) {
-                    this.emit('chunk', text);
-                }
-            };
-
-            localLLM.on('token', onToken);
-
-            // Handle signal
-            if (signal) {
-                signal.addEventListener('abort', () => {
-                    // LocalLLM services handles abort via options.signal
-                    // But we should cleanup listeners
-                    localLLM.off('token', onToken);
-                });
-            }
-
-            try {
-                // Generate and wait for completion
-                // Pass signal to localLLM
-                const response = await localLLM.generate(question, systemPrompt, { signal });
-
-                // Cleanup listener
-                localLLM.off('token', onToken);
-
-                if (response === null && signal?.aborted) {
-                    // Aborted
-                    return null;
-                }
-
-                // Emit completion
-                this.emit('complete', response);
-
-                return response;
-            } catch (err) {
-                localLLM.off('token', onToken);
-                throw err;
-            }
-
-        } catch (err) {
-            if (err.name === 'AbortError' || (signal && signal.aborted)) {
-                return null;
-            }
-            console.error('Local LLM error:', err);
-            this.emit('error', err);
-            throw err;
-        }
-    }
-
     /**
      * Configure the LLM provider
      */
@@ -218,6 +53,14 @@ class LLMConnector extends EventEmitter {
         if (options.model) this.model = options.model;
         if (options.temperature !== undefined) this.config.temperature = options.temperature;
         if (options.maxTokens) this.config.maxTokens = options.maxTokens;
+        if (options.topP !== undefined) this.config.topP = options.topP;
+        if (options.topK !== undefined) this.config.topK = options.topK;
+        if (options.repeatPenalty !== undefined) this.config.repeatPenalty = options.repeatPenalty;
+
+        // Performance settings
+        if (options.threads) this.config.threads = options.threads;
+        if (options.gpuLayers !== undefined) this.config.gpuLayers = options.gpuLayers;
+        if (options.batchSize) this.config.batchSize = options.batchSize;
 
         // Handle API keys - support both single key and array
         if (options.apiKeys && Array.isArray(options.apiKeys)) {
@@ -317,83 +160,128 @@ class LLMConnector extends EventEmitter {
     }
 
     /**
+     * Generate a response WITHOUT aborting the current main generation
+     * Used for secondary requests like "Click-to-Explain".
+     */
+    async generateDefinition(question, systemPrompt = null) {
+        const prompt = systemPrompt || this.systemPrompt;
+        const localSignal = new AbortController().signal;
+
+        if (this.provider === 'local') {
+            return await this.generateLocal(question, prompt, localSignal);
+        }
+
+        const apiKey = this.getCurrentKey();
+        if (!apiKey) {
+            throw new Error(`No API keys configured for ${this.provider}`);
+        }
+
+        try {
+            return await this.generateWithKey(question, prompt, apiKey, localSignal);
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
      * Generate a response with automatic key rotation on failure
      */
     async generate(question, systemPrompt = null) {
+        // Cancel previous generation if exists
+        if (this.abortController) {
+            this.abort();
+        }
+
+        // Create new controller for this generation
+        this.abortController = new AbortController();
+        const signal = this.abortController.signal;
+
         const prompt = systemPrompt || this.systemPrompt;
 
-        // If local provider, bypass API key rotation logic
-        if (this.provider === 'local') {
-            return await this.generateLocal(question, prompt);
-        }
-
-        let lastError = null;
-        let attempts = 0;
-        const maxAttempts = Math.max(this.apiKeys.length, 1);
-
-        while (attempts < maxAttempts) {
-            const apiKey = this.getCurrentKey();
-            if (!apiKey) {
-                throw new Error(`No API keys configured for ${this.provider}`);
+        try {
+            // If local provider, bypass API key rotation logic
+            if (this.provider === 'local') {
+                return await this.generateLocal(question, prompt, signal);
             }
 
-            try {
-                const result = await this.generateWithKey(question, prompt, apiKey);
-                return result;
-            } catch (error) {
-                lastError = error;
+            let lastError = null;
+            let attempts = 0;
+            const maxAttempts = Math.max(this.apiKeys.length, 1);
 
-                // Sanitize error logging
-                const isQuota = this.isQuotaError(error);
-                const errMsg = error.message || 'Unknown error';
-                const shortMsg = `[LLM] Error (Attempt ${attempts + 1}/${maxAttempts}): ${isQuota ? 'Quota Exceeded (429)' : errMsg.substring(0, 100) + '...'}`;
+            while (attempts < maxAttempts) {
+                if (signal.aborted) throw new Error('Aborted');
 
-                console.warn(shortMsg);
+                const apiKey = this.getCurrentKey();
+                if (!apiKey) {
+                    throw new Error(`No API keys configured for ${this.provider}`);
+                }
 
-                if (isQuota) {
-                    this.markKeyFailed(apiKey);
-                    this.rotateKey();
-                    attempts++;
+                try {
+                    const result = await this.generateWithKey(question, prompt, apiKey, signal);
+                    this.abortController = null;
+                    return result;
+                } catch (error) {
+                    if (error.name === 'AbortError' || signal.aborted) {
+                        this.abortController = null;
+                        throw error;
+                    }
 
-                    // Emit event so UI can show status
-                    this.emit('quotaExceeded', {
-                        attempt: attempts,
-                        maxAttempts,
-                        remainingKeys: this.apiKeys.length - this.failedKeys.size
-                    });
-                } else {
-                    // Non-quota error, don't retry immediately
-                    throw error;
+                    lastError = error;
+                    const isQuota = this.isQuotaError(error);
+                    const errMsg = error.message || 'Unknown error';
+                    const shortMsg = `[LLM] Error (Attempt ${attempts + 1}/${maxAttempts}): ${isQuota ? 'Quota Exceeded (429)' : errMsg.substring(0, 100) + '...'}`;
+
+                    console.warn(shortMsg);
+
+                    if (isQuota) {
+                        this.markKeyFailed(apiKey);
+                        this.rotateKey();
+                        attempts++;
+
+                        this.emit('quotaExceeded', {
+                            attempt: attempts,
+                            maxAttempts,
+                            remainingKeys: this.apiKeys.length - this.failedKeys.size
+                        });
+                    } else {
+                        throw error;
+                    }
                 }
             }
-        }
+            throw new Error(`All ${this.apiKeys.length} API keys exhausted. Last error: ${lastError?.message}`);
 
-        // All keys exhausted
-        throw new Error(`All ${this.apiKeys.length} API keys exhausted. Last error: ${lastError?.message}`);
+        } catch (error) {
+            this.abortController = null;
+            if (error.name === 'AbortError' || error.message === 'Aborted') {
+                console.log('[LLMConnector] Generation aborted by user/system');
+                return null;
+            }
+            throw error;
+        }
     }
 
     /**
      * Generate with a specific API key
      */
-    async generateWithKey(question, systemPrompt, apiKey) {
+    async generateWithKey(question, systemPrompt, apiKey, signal) {
         // Debug Prompt Inspector
         console.log('--- [LLM Prompt Inspector] ---');
         console.log('Using Provider:', this.provider);
-        console.log('System Prompt Prefix:', systemPrompt.substring(0, 50) + '...');
+        console.log('System Prompt Prefix:', systemPrompt ? systemPrompt.substring(0, 50) + '...' : 'None');
         console.log('User Question:', question);
         console.log('------------------------------');
 
         switch (this.provider) {
             case 'openai':
-                return await this.generateOpenAI(question, systemPrompt, apiKey);
+                return await this.generateOpenAI(question, systemPrompt, apiKey, signal);
             case 'groq':
-                return await this.generateGroq(question, systemPrompt, apiKey);
+                return await this.generateGroq(question, systemPrompt, apiKey, signal);
             case 'anthropic':
-                return await this.generateAnthropic(question, systemPrompt, apiKey);
+                return await this.generateAnthropic(question, systemPrompt, apiKey, signal);
             case 'google':
-                return await this.generateGoogle(question, systemPrompt, apiKey);
+                return await this.generateGoogle(question, systemPrompt, apiKey, signal);
             case 'local':
-                return await this.generateLocal(question, systemPrompt);
+                return await this.generateLocal(question, systemPrompt, signal);
             default:
                 throw new Error(`Unknown provider: ${this.provider}`);
         }
@@ -402,7 +290,7 @@ class LLMConnector extends EventEmitter {
     /**
      * Generate using Groq LLM (OpenAI compatible)
      */
-    async generateGroq(question, systemPrompt, apiKey) {
+    async generateGroq(question, systemPrompt, apiKey, signal) {
         const OpenAI = require('openai'); // Groq SDK is also compatible or we can use openai sdk with base url
 
         const client = new OpenAI({
@@ -410,132 +298,117 @@ class LLMConnector extends EventEmitter {
             baseURL: 'https://api.groq.com/openai/v1'
         });
 
-        try {
-            const messages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida:` }
-            ];
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida:` }
+        ];
 
-            const response = await client.chat.completions.create({
-                model: this.model || 'llama-3.1-70b-versatile',
-                messages,
-                temperature: this.config.temperature,
-                max_tokens: this.config.maxTokens
-            });
+        // Note: OpenAI Node SDK doesn't support AbortSignal natively in create() in all versions 
+        // but recent ones do via options, or we can use fetch polyfills. 
+        // For simplicity, we just check signal here. (Improvement needed for real-time cancel)
 
-            const fullResponse = response.choices[0]?.message?.content || '';
-            this.emit('complete', fullResponse);
-            return fullResponse;
+        const response = await client.chat.completions.create({
+            model: this.model || 'llama-3.1-70b-versatile',
+            messages,
+            temperature: this.config.temperature,
+            max_tokens: this.config.maxTokens
+        });
 
-        } catch (error) {
-            console.error('Groq LLM error:', error);
-            this.emit('error', error);
-            throw error;
-        }
+        if (signal?.aborted) throw new Error('Aborted');
+
+        const fullResponse = response.choices[0]?.message?.content || '';
+        this.emit('complete', fullResponse);
+        return fullResponse;
     }
 
     /**
      * Generate using OpenAI API
      */
-    async generateOpenAI(question, systemPrompt, apiKey) {
+    async generateOpenAI(question, systemPrompt, apiKey, signal) {
         const OpenAI = require('openai');
 
         const client = new OpenAI({ apiKey });
 
-        try {
-            const messages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:` }
-            ];
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:` }
+        ];
 
-            const stream = await client.chat.completions.create({
-                model: this.model,
-                messages,
-                temperature: this.config.temperature,
-                max_tokens: this.config.maxTokens,
-                stream: true
-            });
+        const stream = await client.chat.completions.create({
+            model: this.model,
+            messages,
+            temperature: this.config.temperature,
+            max_tokens: this.config.maxTokens,
+            stream: true
+        });
 
-            let fullResponse = '';
+        let fullResponse = '';
 
-            for await (const chunk of stream) {
-                const content = chunk.choices[0]?.delta?.content || '';
-                fullResponse += content;
-                this.emit('chunk', content);
+        for await (const chunk of stream) {
+            if (signal?.aborted) {
+                stream.controller.abort(); // Attempt to stop stream
+                throw new Error('Aborted');
             }
-
-            this.emit('complete', fullResponse);
-            return fullResponse;
-
-        } catch (error) {
-            console.error('OpenAI error:', error);
-            this.emit('error', error);
-            throw error;
+            const content = chunk.choices[0]?.delta?.content || '';
+            fullResponse += content;
+            this.emit('chunk', content);
         }
+
+        this.emit('complete', fullResponse);
+        return fullResponse;
     }
 
     /**
      * Generate using Anthropic Claude API
      */
-    async generateAnthropic(question, systemPrompt, apiKey) {
+    async generateAnthropic(question, systemPrompt, apiKey, signal) {
         const Anthropic = require('@anthropic-ai/sdk');
-
         const client = new Anthropic({ apiKey });
 
-        try {
-            const response = await client.messages.create({
-                model: this.model,
-                max_tokens: this.config.maxTokens,
-                system: systemPrompt,
-                messages: [
-                    {
-                        role: 'user',
-                        content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:`
-                    }
-                ]
-            });
+        const response = await client.messages.create({
+            model: this.model,
+            max_tokens: this.config.maxTokens,
+            system: systemPrompt,
+            messages: [
+                {
+                    role: 'user',
+                    content: `Pergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:`
+                }
+            ]
+        });
 
-            const fullResponse = response.content[0]?.text || '';
+        if (signal?.aborted) throw new Error('Aborted');
 
-            this.emit('complete', fullResponse);
-            return fullResponse;
-
-        } catch (error) {
-            console.error('Anthropic error:', error);
-            this.emit('error', error);
-            throw error;
-        }
+        const fullResponse = response.content[0]?.text || '';
+        this.emit('complete', fullResponse);
+        return fullResponse;
     }
 
     /**
      * Generate using Google Gemini API
      */
-    async generateGoogle(question, systemPrompt, apiKey) {
+    async generateGoogle(question, systemPrompt, apiKey, signal) {
         const { GoogleGenerativeAI } = require('@google/generative-ai');
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: this.model });
 
-        try {
-            const prompt = `${systemPrompt}\n\nPergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:`;
+        const prompt = `${systemPrompt}\n\nPergunta do entrevistador: "${question}"\n\nGere uma resposta sugerida para esta pergunta de entrevista:`;
 
-            const result = await model.generateContent(prompt);
-            const fullResponse = result.response.text();
+        const result = await model.generateContent(prompt);
 
-            this.emit('complete', fullResponse);
-            return fullResponse;
+        if (signal?.aborted) throw new Error('Aborted');
 
-        } catch (error) {
-            console.error('Google Gemini error:', error);
-            this.emit('error', error);
-            throw error;
-        }
+        const fullResponse = result.response.text();
+
+        this.emit('complete', fullResponse);
+        return fullResponse;
     }
 
     /**
      * Generate using Local LLM (Offline) - Event-based streaming
      */
-    async generateLocal(question, systemPrompt) {
+    async generateLocal(question, systemPrompt, signal) {
         const activeModelFilename = this.model;
 
         if (!activeModelFilename) {
@@ -545,7 +418,11 @@ class LLMConnector extends EventEmitter {
         const modelPath = modelManager.getPath(activeModelFilename);
 
         try {
-            await localLLM.loadModel(modelPath);
+            await localLLM.loadModel(modelPath, {
+                threads: this.config.threads,
+                gpuLayers: this.config.gpuLayers,
+                batchSize: this.config.batchSize
+            });
 
             // Forward token events as chunk events immediately
             const onToken = (text) => {
@@ -556,23 +433,44 @@ class LLMConnector extends EventEmitter {
 
             localLLM.on('token', onToken);
 
+            // Handle signal
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    // LocalLLM services handles abort via options.signal
+                    // But we should cleanup listeners
+                    localLLM.off('token', onToken);
+                });
+            }
+
             try {
                 // Generate and wait for completion
-                const response = await localLLM.generate(question, systemPrompt);
+                // Pass signal to localLLM
+                const response = await localLLM.generate(question, systemPrompt, {
+                    signal,
+                    temperature: this.config.temperature,
+                    topP: this.config.topP,
+                    topK: this.config.topK,
+                    repeatPenalty: this.config.repeatPenalty,
+                    maxTokens: this.config.maxTokens
+                });
 
                 // Cleanup listener
                 localLLM.off('token', onToken);
 
-                // Emit completion
-                this.emit('complete', response);
+                if (response === null && signal?.aborted) {
+                    return null;
+                }
 
+                this.emit('complete', response);
                 return response;
             } catch (err) {
                 localLLM.off('token', onToken);
                 throw err;
             }
-
         } catch (err) {
+            if (err.name === 'AbortError' || (signal && signal.aborted)) {
+                return null;
+            }
             console.error('Local LLM error:', err);
             this.emit('error', err);
             throw err;

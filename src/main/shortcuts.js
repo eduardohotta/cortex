@@ -9,6 +9,7 @@ const { getMainWindow, getOverlayWindow } = require('./windows');
 let audioService = null;
 let speechService = null;
 let settingsManager = null;
+let contextManager = null;
 
 /**
  * Inject service dependencies
@@ -17,6 +18,7 @@ function injectServices(services) {
     audioService = services.audioService;
     speechService = services.speechService;
     settingsManager = services.settingsManager;
+    contextManager = services.contextManager;
 }
 
 /**
@@ -114,6 +116,7 @@ async function handleAppAction(action, data) {
         try {
             if (audioService) audioService.stopCapture();
             if (speechService) speechService.stop();
+            if (contextManager) contextManager.clear();
         } catch (e) {
             console.error('Error stopping services during exit:', e);
         }

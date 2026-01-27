@@ -186,6 +186,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
             const l = (_, data) => callback(data);
             ipcRenderer.on('model:updated', l);
             return () => ipcRenderer.removeListener('model:updated', l);
+        },
+        onStatus: (callback) => {
+            const l = (_, data) => callback(data);
+            ipcRenderer.on('model:status', l);
+            return () => ipcRenderer.removeListener('model:status', l);
         }
     },
 

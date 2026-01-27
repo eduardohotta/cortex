@@ -74,11 +74,15 @@ export function AppProvider({ children }) {
                 dispatch({ type: ACTIONS.UPDATE_TRANSCRIPT, payload: data });
             });
 
-            const removeAskListener = window.electronAPI.app?.onHotkeyAsk?.(() => {
-                // Trigger the same logic as the "Perguntar" button
-                window.electronAPI.llm?.processAsk?.({ text: null, manual: true });
-                // Switch view automatically if on overlay
-                dispatch({ type: ACTIONS.SET_VIEW, payload: 'response' });
+            const removeAskListener = window.electronAPI.app?.onHotkeyAsk?.(async () => {
+                // Prevent duplicate handling: Only handle in Overlay window
+                const view = await window.electronAPI.getOverlayView();
+                if (view) {
+                    // Trigger the same logic as the "Perguntar" button
+                    window.electronAPI.llm?.processAsk?.({ text: null, manual: true });
+                    // Switch view automatically if on overlay
+                    dispatch({ type: ACTIONS.SET_VIEW, payload: 'response' });
+                }
             });
 
             const removeStateListener = window.electronAPI.app?.onStateUpdate?.((newState) => {
@@ -95,13 +99,18 @@ export function AppProvider({ children }) {
                 if (profiles) dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: profiles });
             }).catch(err => console.error("Failed to load profiles:", err));
 
+            return () => {
+                // Cleanup listeners
+                removeAudioListener && removeAudioListener();
+                removeTranscriptListener && removeTranscriptListener();
+                removeAskListener && removeAskListener();
+                removeStateListener && removeStateListener();
+            };
+
         } catch (error) {
             console.error("AppContext IPC Error:", error);
+            return () => { };
         }
-
-        return () => {
-            // Cleanup listeners if possible
-        };
     }, []);
 
     return (

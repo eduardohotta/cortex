@@ -23,8 +23,15 @@ class SettingsManager {
                     llmModel: 'gemini-1.5-flash',
                     temperature: 0.7,
                     maxTokens: 500,
+                    localTopK: 40,
+                    localRepetitionPenalty: 1.15,
+                    localMaxTokens: 512,
+                    localThreads: 4,
+                    localGpuLayers: 0, // 0 = auto/off depending on implementation
+                    localBatchSize: 512,
                     systemPrompt: this.getDefaultPrompt('rh'),
                     overlayOpacity: 90,
+                    hotkeyExplain: 'ctrl',
                     profiles: {}
                 }
             });

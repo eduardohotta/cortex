@@ -11,7 +11,9 @@ let audioService = null;
 let settingsManager = null;
 let llmConnector = null;
 let contextManager = null;
-let speechService = null; // Explicitly declared
+let speechService = null;
+
+let isGenerating = false; // FIX: generation lock
 
 /**
  * Inject service dependencies
@@ -23,7 +25,6 @@ function injectServices(services) {
     contextManager = services.contextManager;
     speechService = services.speechService;
 
-    // Attach listeners
     if (speechService) {
         speechService.on('cuda-fallback', (data) => {
             console.warn('CUDA Fallback Triggered:', data);
@@ -36,12 +37,17 @@ function injectServices(services) {
  * Register all IPC handlers
  */
 function registerIPCHandlers() {
-    // App Actions
+
+    /* ===========================
+       APP ACTIONS
+    ============================ */
     ipcMain.on('app:action', (event, payload) => {
         handleAppAction(payload.action, payload.data);
     });
 
-    // Overlay Controls
+    /* ===========================
+       OVERLAY CONTROLS
+    ============================ */
     ipcMain.handle('overlay:show', () => {
         const overlayWindow = getOverlayWindow();
         const mainWindow = getMainWindow();
@@ -60,9 +66,7 @@ function registerIPCHandlers() {
         }
     });
 
-    ipcMain.handle('overlay:toggleStealth', () => {
-        return toggleStealthMode();
-    });
+    ipcMain.handle('overlay:toggleStealth', () => toggleStealthMode());
 
     ipcMain.on('overlay:set-ignore-mouse', (event, ignore) => {
         const overlayWindow = getOverlayWindow();
@@ -71,10 +75,11 @@ function registerIPCHandlers() {
         }
     });
 
-    // Audio Controls
+    /* ===========================
+       AUDIO
+    ============================ */
     ipcMain.handle('audio:getDevices', async () => {
-        if (!audioService) return [];
-        return await audioService.getDevices();
+        return audioService ? audioService.getDevices() : [];
     });
 
     ipcMain.handle('audio:startCapture', async (event, deviceId) => {
@@ -93,8 +98,130 @@ function registerIPCHandlers() {
         return true;
     });
 
-    // LLM Process Ask - Event-based streaming (no async iterator)
+    /* ===========================
+       LLM – STREAMING ASK
+    ============================ */
     ipcMain.handle('llm:process-ask', async (event, { text, historyOverride }) => {
+
+        // FIX: lock before anything async
+        if (isGenerating) {
+            console.warn('[LLM] Generation already in progress');
+            return '';
+        }
+        isGenerating = true;
+
+        return new Promise(async (resolve, reject) => {
+
+            let fullResponse = '';
+            let queryText = '';
+
+            const cleanup = () => { // FIX: centralized cleanup
+                llmConnector.off('chunk', onChunk);
+                llmConnector.off('complete', onComplete);
+                llmConnector.off('error', onError);
+                isGenerating = false;
+            };
+
+            const onChunk = (chunk) => {
+                if (!chunk) return;
+                fullResponse += chunk;
+                broadcastToWindows('llm:response-chunk', chunk);
+            };
+
+            const onComplete = () => {
+                broadcastToWindows('llm:response-end');
+
+                if (fullResponse.length > 5) {
+                    contextManager.recordTurn(queryText, fullResponse);
+                    appState.transcriptBuffer = '';
+                    appState.tokenCount = 0;
+                    broadcastState();
+                }
+
+                cleanup();
+                resolve(fullResponse);
+            };
+
+            const onError = (err) => {
+                console.error('[LLM] Error:', err);
+                broadcastToWindows('llm:error', err.message);
+                cleanup();
+                reject(err);
+            };
+
+            try {
+                const provider = settingsManager.get('llmProvider');
+                const model = provider === 'local'
+                    ? settingsManager.get('localModel')
+                    : settingsManager.get('llmModel');
+
+                llmConnector.configure({
+                    provider,
+                    model,
+                    apiKeys: settingsManager.get('apiKeys', provider),
+                    temperature: settingsManager.get('temperature') ?? 0.3,
+                    topP: settingsManager.get('topP') ?? 0.9,
+                    maxTokens: settingsManager.get('maxTokens') ?? 512,
+
+                    // Local LLM
+                    topK: settingsManager.get('localTopK') ?? 40,
+                    repeatPenalty: settingsManager.get('localRepetitionPenalty') ?? 1.15,
+                    threads: settingsManager.get('localThreads') ?? 4,
+                    gpuLayers: settingsManager.get('localGpuLayers') ?? 0,
+                    batchSize: settingsManager.get('localBatchSize') ?? 512
+                });
+
+                const currentProfileId = settingsManager.get('currentAssistantId') || 'default';
+                const profile = settingsManager.loadProfile(currentProfileId) || {};
+
+                let systemPrompt = [
+                    profile.systemPrompt || settingsManager.get('systemPrompt'),
+                    profile.assistantInstructions || settingsManager.get('assistantInstructions'),
+                    profile.additionalContext || settingsManager.get('additionalContext')
+                ].filter(Boolean).join('\n\n');
+
+                systemPrompt += settingsManager.buildBehaviorPrompt(profile);
+
+                const history = historyOverride || contextManager.getRecentHistory(3);
+                queryText = text || appState.transcriptBuffer;
+
+                if (!queryText || !queryText.trim()) {
+                    cleanup();
+                    return reject(new Error('Sem texto para perguntar.'));
+                }
+
+                if (history?.length) {
+                    const historyText = history
+                        .map(h => `Human: ${h.question}\nAI: ${h.answer}`)
+                        .join('\n\n');
+                    systemPrompt += `\n\n## Contexto anterior:\n${historyText}`;
+                }
+
+                broadcastToWindows('llm:response-start');
+
+                llmConnector.on('chunk', onChunk);
+                llmConnector.on('complete', onComplete);
+                llmConnector.on('error', onError);
+
+                const result = await llmConnector.generate(queryText, systemPrompt);
+
+                // Non-streaming providers fallback
+                if (typeof result === 'string' && !fullResponse) {
+                    fullResponse = result;
+                    broadcastToWindows('llm:response-chunk', result);
+                    onComplete();
+                }
+
+            } catch (err) {
+                onError(err);
+            }
+        });
+    });
+
+    /* ===========================
+       LLM – DIRECT GENERATE
+    ============================ */
+    ipcMain.handle('llm:generate', async (event, prompt, systemPromptOverride) => {
         return new Promise(async (resolve, reject) => {
             try {
                 const provider = settingsManager.get('llmProvider');
@@ -106,259 +233,158 @@ function registerIPCHandlers() {
                     provider,
                     model,
                     apiKeys: settingsManager.get('apiKeys', provider),
-                    temperature: settingsManager.get('temperature'),
-                    maxTokens: settingsManager.get('maxTokens')
+                    temperature: 0.3,
+                    maxTokens: 150
                 });
 
-                // Load current profile for behavior settings
-                const currentProfileId = settingsManager.get('currentAssistantId') || 'default';
-                const profile = settingsManager.loadProfile(currentProfileId) || {};
+                const sysPrompt =
+                    systemPromptOverride ||
+                    'Você é um dicionário técnico conciso. Defina o termo solicitado em poucas palavras.';
 
-                // Build base system prompt from profile text fields
-                let systemPrompt = [
-                    profile.systemPrompt || settingsManager.get('systemPrompt'),
-                    profile.assistantInstructions || settingsManager.get('assistantInstructions'),
-                    profile.additionalContext || settingsManager.get('additionalContext')
-                ].filter(p => p).join('\n\n');
+                let attempts = 0;
+                const maxAttempts = 20;
 
-                // Append behavior directives from profile configuration
-                systemPrompt += settingsManager.buildBehaviorPrompt(profile);
-
-                const history = historyOverride || contextManager.getRecentHistory(3);
-                const queryText = text || appState.transcriptBuffer;
-
-                if (!queryText || queryText.trim().length === 0) {
-                    throw new Error("Sem texto para perguntar.");
-                }
-
-                if (history && history.length > 0) {
-                    const historyText = history.map(h => `Human: ${h.question}\nAI: ${h.answer}`).join('\n\n');
-                    systemPrompt += `\n\n## Contexto anterior:\n${historyText}\n\n## Pergunta Atual:\n`;
-                }
-
-                broadcastToWindows('llm:response-start');
-
-                let fullResponse = '';
-
-                // Event-based streaming - listen for chunks
-                const onChunk = (chunk) => {
-                    if (chunk) {
-                        fullResponse += chunk;
-                        broadcastToWindows('llm:response-chunk', chunk);
-                    }
-                };
-
-                const onComplete = (response) => {
-                    broadcastToWindows('llm:response-end');
-
-                    if (fullResponse.length > 5) {
-                        contextManager.recordTurn(queryText, fullResponse);
-                        appState.transcriptBuffer = '';
-                        appState.tokenCount = 0;
-                        broadcastState();
-                    }
-
-                    // Cleanup listeners
-                    llmConnector.off('chunk', onChunk);
-                    llmConnector.off('complete', onComplete);
-                    llmConnector.off('error', onError);
-
-                    resolve(fullResponse);
-                };
-
-                const onError = (err) => {
-                    llmConnector.off('chunk', onChunk);
-                    llmConnector.off('complete', onComplete);
-                    llmConnector.off('error', onError);
-
-                    broadcastToWindows('llm:error', err.message);
-                    reject(err);
-                };
-
-                llmConnector.on('chunk', onChunk);
-                llmConnector.on('complete', onComplete);
-                llmConnector.on('error', onError);
-
-                // Start generation (non-blocking for streaming)
-                try {
-                    const result = await llmConnector.generate(queryText, systemPrompt);
-                    // For providers that return directly (non-streaming)
-                    if (typeof result === 'string' && !fullResponse) {
-                        fullResponse = result;
-                        broadcastToWindows('llm:response-chunk', result);
-                        broadcastToWindows('llm:response-end');
-
-                        if (fullResponse.length > 5) {
-                            contextManager.recordTurn(queryText, fullResponse);
-                            appState.transcriptBuffer = '';
-                            appState.tokenCount = 0;
-                            broadcastState();
+                while (attempts < maxAttempts) {
+                    try {
+                        const result = await llmConnector.generateDefinition(prompt, sysPrompt);
+                        return resolve(result);
+                    } catch (err) {
+                        if (err.message?.includes('already in progress')) {
+                            attempts++;
+                            await new Promise(r => setTimeout(r, 500));
+                            continue;
                         }
-
-                        llmConnector.off('chunk', onChunk);
-                        llmConnector.off('complete', onComplete);
-                        llmConnector.off('error', onError);
-
-                        resolve(fullResponse);
+                        return reject(err);
                     }
-                } catch (genError) {
-                    onError(genError);
                 }
+
+                reject(new Error('LLM ocupado. Tente novamente.'));
 
             } catch (error) {
-                console.error('LLM Process failed:', error);
-                broadcastToWindows('llm:error', error.message);
                 reject(error);
             }
         });
     });
 
-    // Stop LLM Generation
+    /* ===========================
+       LLM – STOP
+    ============================ */
     ipcMain.handle('llm:stop-generation', async () => {
-        console.log('[IPC] Stopping generation...');
-        llmConnector.abort();
+        console.log('[IPC] Stop generation');
+        try {
+            llmConnector.abort();
+        } catch (e) {
+            console.warn('Abort failed:', e);
+        }
+        isGenerating = false; // FIX
         return { success: true };
     });
 
-    // Model & Offline Engine Controls
+    /* ===========================
+       MODEL MANAGER / HF
+    ============================ */
     const modelManager = require('../services/model-manager');
     const huggingFace = require('../services/huggingface');
 
-    // Model Manager Events -> Broadcast to UI
     modelManager.on('progress', (data) => broadcastToWindows('model:progress', data));
     modelManager.on('updated', (models) => broadcastToWindows('model:updated', models));
 
-    // List Local Models
-    ipcMain.handle('model:list', () => modelManager.list());
+    const localLLM = require('../services/local-llm-service');
+    localLLM.on('model:status', (data) => broadcastToWindows('model:status', data));
 
-    // Delete Local Model
+    ipcMain.handle('model:list', () => modelManager.list());
     ipcMain.handle('model:delete', async (event, filename) => {
         modelManager.delete(filename);
         return { success: true };
     });
 
-    // Download Model
     ipcMain.handle('model:download', async (event, { url, filename, metadata }) => {
         try {
             await modelManager.download(url, filename, metadata);
             return { success: true };
-        } catch (error) {
-            return { success: false, error: error.message };
+        } catch (e) {
+            return { success: false, error: e.message };
         }
     });
 
-    ipcMain.handle('model:cancel', (event, filename) => {
-        return modelManager.cancel(filename);
-    });
+    ipcMain.handle('model:cancel', (event, filename) => modelManager.cancel(filename));
 
-    // Hugging Face Integration
-    ipcMain.handle('hf:search', async (event, query) => {
-        return await huggingFace.search(query);
-    });
+    ipcMain.handle('hf:search', async (event, query) => huggingFace.search(query));
+    ipcMain.handle('hf:files', async (event, repoId) => huggingFace.getFiles(repoId));
+    ipcMain.handle('hf:getRecommended', async () => huggingFace.getRecommended());
+    ipcMain.handle('hf:getBestFile', async (event, repoId) => huggingFace.getBestFile(repoId));
 
-    ipcMain.handle('hf:files', async (event, repoId) => {
-        return await huggingFace.getFiles(repoId);
-    });
-
-    ipcMain.handle('hf:getRecommended', async () => {
-        return await huggingFace.getRecommended();
-    });
-
-    ipcMain.handle('hf:getBestFile', async (event, repoId) => {
-        return await huggingFace.getBestFile(repoId);
-    });
-
-    // Settings Controls
-    ipcMain.handle('settings:get', (event, key, provider) => settingsManager.get(key, provider));
-    ipcMain.handle('settings:set', (event, key, value, provider) => {
+    /* ===========================
+       SETTINGS
+    ============================ */
+    ipcMain.handle('settings:get', (e, key, provider) => settingsManager.get(key, provider));
+    ipcMain.handle('settings:set', (e, key, value, provider) => {
         settingsManager.set(key, value, provider);
-        // Relay change to all windows (for sync)
         broadcastToWindows('settings:changed', { key, value, provider });
         return { success: true };
     });
-    ipcMain.handle('settings:getAll', (event, provider) => settingsManager.getAll(provider));
-    ipcMain.handle('settings:saveProfile', (event, name, config) => {
+    ipcMain.handle('settings:getAll', (e, provider) => settingsManager.getAll(provider));
+    ipcMain.handle('settings:saveProfile', (e, name, config) => {
         settingsManager.saveProfile(name, config);
-        // Broadcast update
-        broadcastProfilesUpdate();
+        broadcastToWindows('profiles:updated');
         return { success: true };
     });
-    ipcMain.handle('settings:loadProfile', (event, name) => settingsManager.loadProfile(name));
+    ipcMain.handle('settings:loadProfile', (e, name) => settingsManager.loadProfile(name));
     ipcMain.handle('settings:getProfiles', () => settingsManager.getProfiles());
-    ipcMain.handle('settings:deleteProfile', (event, name) => {
+    ipcMain.handle('settings:deleteProfile', (e, name) => {
         settingsManager.deleteProfile(name);
-        // Broadcast update
-        broadcastProfilesUpdate();
+        broadcastToWindows('profiles:updated');
         return { success: true };
     });
+
     ipcMain.handle('settings:refreshShortcuts', () => {
         const { registerShortcuts } = require('./shortcuts');
         registerShortcuts();
         return { success: true };
     });
 
-    // App Controls
+    /* ===========================
+       APP / WINDOW
+    ============================ */
     ipcMain.handle('app:panic', () => {
-        console.log('[IPC] Panic triggered');
-        // Stop services immediately
-        try {
-            if (audioService) audioService.stopCapture();
-            if (speechService) speechService.stop();
-        } catch (e) {
-            console.error('Error stopping services on panic:', e);
-        }
+        console.warn('[APP] PANIC');
+        audioService?.stopCapture();
+        speechService?.stop();
+        contextManager?.clear();
 
-        const overlayWindow = getOverlayWindow();
-        const mainWindow = getMainWindow();
-
-        if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+        getOverlayWindow()?.destroy();
+        getMainWindow()?.destroy();
 
         app.quit();
-        // Force exit if still hanging
         setTimeout(() => process.exit(0), 500);
     });
 
-    ipcMain.handle('window:minimize', () => {
-        const mainWindow = getMainWindow();
-        if (mainWindow) mainWindow.minimize();
-    });
-
-    ipcMain.handle('window:close', () => {
-        const mainWindow = getMainWindow();
-        if (mainWindow) mainWindow.close();
-    });
+    ipcMain.handle('window:minimize', () => getMainWindow()?.minimize());
+    ipcMain.handle('window:close', () => getMainWindow()?.close());
 
     ipcMain.handle('window:toggle-maximize', () => {
-        const mainWindow = getMainWindow();
-        if (mainWindow) {
-            if (mainWindow.isMaximized()) mainWindow.unmaximize();
-            else mainWindow.maximize();
-        }
+        const win = getMainWindow();
+        if (!win) return;
+        win.isMaximized() ? win.unmaximize() : win.maximize();
     });
 
-    ipcMain.on('window:move', (event, { x, y }) => {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        if (win) {
-            const [currentX, currentY] = win.getPosition();
-            win.setPosition(currentX + x, currentY + y);
-        }
+    ipcMain.on('window:move', (e, { x, y }) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win) return;
+        const [cx, cy] = win.getPosition();
+        win.setPosition(cx + x, cy + y);
     });
 
     ipcMain.handle('app:show-dashboard', () => {
-        let mainWindow = getMainWindow();
-        if (!mainWindow) {
+        let win = getMainWindow();
+        if (!win) {
             const { createMainWindow } = require('./windows');
-            mainWindow = createMainWindow();
+            win = createMainWindow();
         }
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.show();
-        mainWindow.focus();
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
     });
-}
-
-function broadcastProfilesUpdate() {
-    broadcastToWindows('profiles:updated');
 }
 
 module.exports = {

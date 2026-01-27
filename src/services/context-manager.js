@@ -37,6 +37,8 @@ class ContextManager extends EventEmitter {
 
     clear() {
         this.buffer = [];
+        this.store.clear();
+        console.log('[ContextManager] Context and history cleared');
     }
 }
 

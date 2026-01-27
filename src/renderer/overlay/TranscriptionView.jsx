@@ -102,6 +102,11 @@ export default function TranscriptionView() {
         if (isFinal) {
             // RULE: Always concatenate - append to history
             setHistory(prev => {
+                // Deduplicate: Check if last entry is identical
+                const lastEntry = prev[prev.length - 1];
+                if (lastEntry && lastEntry.text.trim() === text.trim()) {
+                    return prev;
+                }
                 const newHistory = [...prev, { text, timestamp: Date.now() }];
                 // Keep last 50 entries
                 return newHistory.slice(-50);
@@ -151,9 +156,9 @@ export default function TranscriptionView() {
     // Memoized history rendering to prevent unnecessary re-renders
     const historyElements = useMemo(() =>
         history.map((entry, i) => (
-            <p key={`${entry.timestamp}-${i}`} className="text-white text-sm leading-relaxed font-medium selection:bg-blue-600">
+            <span key={`${entry.timestamp}-${i}`} className="text-white text-sm leading-relaxed font-medium selection:bg-blue-600 mr-1">
                 {entry.text}
-            </p>
+            </span>
         )), [history]
     );
 
@@ -175,7 +180,7 @@ export default function TranscriptionView() {
             <div
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto px-5 py-3 space-y-3 custom-scrollbar"
+                className="flex-1 min-h-0 overflow-y-auto px-5 py-3 custom-scrollbar"
             >
                 {history.length === 0 && !interim && (
                     <div className="flex items-center justify-center h-full opacity-10">
@@ -184,9 +189,9 @@ export default function TranscriptionView() {
                 )}
                 {historyElements}
                 {interim && (
-                    <p className="text-blue-400 text-sm leading-relaxed font-semibold animate-pulse">
+                    <span className="text-blue-400 text-sm leading-relaxed font-semibold animate-pulse">
                         {interim}
-                    </p>
+                    </span>
                 )}
                 <div ref={bottomRef} className="h-3" />
             </div>

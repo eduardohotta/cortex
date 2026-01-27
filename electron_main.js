@@ -80,7 +80,11 @@ app.whenReady().then(async () => {
         const localLLM = require('./src/services/local-llm-service');
         const modelManager = require('./src/services/model-manager');
         const modelPath = modelManager.getPath(localModel);
-        await localLLM.loadModel(modelPath);
+        await localLLM.loadModel(modelPath, {
+          threads: settingsManager.get('localThreads'),
+          gpuLayers: settingsManager.get('localGpuLayers'),
+          batchSize: settingsManager.get('localBatchSize')
+        });
         console.log('[CORTEX] Local model preloaded successfully');
       }
     }

@@ -107,7 +107,7 @@ class AudioCaptureService extends EventEmitter {
         if (!this.devices.length) await this.getDevices();
 
         const actualDeviceId =
-            deviceId === 'system' || deviceId == null
+            deviceId === 'system' || deviceId === 'default' || deviceId == null
                 ? this.defaultLoopbackId
                 : deviceId;
 
