@@ -63,11 +63,15 @@ function createMainWindow() {
 function createRemoteWindow() {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
+    const WINDOW_WIDTH = 700;
+    const WINDOW_HEIGHT = 600;
+    const BOTTOM_OFFSET = 16; // 👈 ajuste fino aqui
+
     windows.remote = new BrowserWindow({
-        width: 700,
-        height: 600, // Increased to fit popups (Opening upwards)
-        x: Math.floor((width - 700) / 2),
-        y: height - 620, // Adjusted Y to keep bar at bottom
+        width: WINDOW_WIDTH,
+        height: WINDOW_HEIGHT,
+        x: Math.floor((width - WINDOW_WIDTH) / 2),
+        y: height - WINDOW_HEIGHT - BOTTOM_OFFSET,
         frame: false,
         transparent: true,
         alwaysOnTop: true,
@@ -84,9 +88,20 @@ function createRemoteWindow() {
         }
     });
 
+
     const overlayPath = path.join(DIST_PATH, 'overlay', 'index.html');
     // Using loadFile with hash option for robustness
     windows.remote.loadFile(overlayPath, { hash: 'remote' });
+    windows.remote.once('ready-to-show', () => {
+        const { workArea } = screen.getPrimaryDisplay();
+
+        const x = Math.floor(workArea.x + (workArea.width - WINDOW_WIDTH) / 2);
+        const y = workArea.y + workArea.height - WINDOW_HEIGHT - BOTTOM_OFFSET;
+
+        windows.remote.setPosition(x, y, false);
+        windows.remote.show();
+    });
+
 
     // Enable click-through for transparent areas by default
     windows.remote.setIgnoreMouseEvents(true, { forward: true });

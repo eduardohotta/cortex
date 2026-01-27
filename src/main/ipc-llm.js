@@ -45,7 +45,15 @@ function registerLLMHandlers(services) {
                 llmConnector.off('chunk', onChunk);
                 llmConnector.off('complete', onComplete);
                 llmConnector.off('error', onError);
+                llmConnector.off('aborted', onAbort);
                 isGenerating = false;
+            };
+
+            const onAbort = () => {
+                console.log('[IPC-LLM] Generation aborted event received');
+                broadcastToWindows('llm:response-end');
+                cleanup();
+                resolve(null);
             };
 
             const onChunk = (chunk) => {
@@ -124,6 +132,7 @@ function registerLLMHandlers(services) {
                 llmConnector.on('chunk', onChunk);
                 llmConnector.on('complete', onComplete);
                 llmConnector.on('error', onError);
+                llmConnector.on('aborted', onAbort);
 
                 const result = await llmConnector.generate(queryText, systemPrompt);
 
@@ -143,7 +152,14 @@ function registerLLMHandlers(services) {
        LLM – STOP
     ============================ */
     ipcMain.handle('llm:stop-generation', async () => {
-        try { llmConnector.abort(); } catch { }
+        console.log('[IPC-LLM] Manual stop requested');
+        try {
+            llmConnector.abort();
+            // Fallback: if Connector didn't emit, we force UI consistency
+            broadcastToWindows('llm:response-end');
+        } catch (e) {
+            console.warn('[IPC-LLM] Stop failed:', e);
+        }
         isGenerating = false;
         return { success: true };
     });
@@ -157,6 +173,7 @@ function registerLLMHandlers(services) {
 
         return llmConnector.generateDefinition(prompt, sysPrompt);
     });
+
 
     /* ===========================
        MODEL / HF

@@ -96,6 +96,7 @@ class LocalLLMService extends EventEmitter {
        GENERATE
        ========================= */
     async generate(question, systemPrompt = '', options = {}) {
+        this.abortController = new AbortController();
         if (!this.context) {
             throw new Error('No local model loaded');
         }
@@ -149,8 +150,12 @@ class LocalLLMService extends EventEmitter {
                 repeatPenalty,
                 maxTokens,
                 stopOnAbortSignal: true,
+                signal: this.abortController.signal,
                 stop: ["User:", "Human:", "AI:", "##", "Insight:"],
                 onTextChunk: (text) => {
+                    if (this.abortController?.aborted) {
+                        return;
+                    }
                     // Update token count estimation (rough)
                     this.usedTokens++;
                     const currentPercent = Math.min((this.usedTokens / this.context.contextSize) * 100, 100);
@@ -164,10 +169,11 @@ class LocalLLMService extends EventEmitter {
                     if (text === lastChunk) {
                         repeatCount++;
                         if (repeatCount > 6) {
-                            console.warn('[LocalLLM] Loop detected, aborting');
-                            this.session.abort();
+                            console.warn('[LocalLLM] Loop detected, aborting via signal');
+                            this.abortController?.abort();
                             return;
                         }
+
                     } else {
                         repeatCount = 0;
                     }

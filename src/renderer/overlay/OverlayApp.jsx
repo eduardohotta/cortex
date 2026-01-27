@@ -174,11 +174,15 @@ function OverlayContent() {
     // ===== REMOTE (barra flutuante) =====
     if (view === 'remote') {
         return (
-            <div className="h-full w-full flex items-center justify-center bg-transparent">
-                <FloatingRemote standalone />
+            <div className="h-full w-full flex items-end justify-center bg-transparent pb-1">
+                <div className="animate-in fade-in slide-in-from-bottom-2">
+                    <FloatingRemote standalone />
+                </div>
             </div>
+
         );
     }
+
 
     // ===== TRANSCRIPTION =====
     if (view === 'transcription') {
