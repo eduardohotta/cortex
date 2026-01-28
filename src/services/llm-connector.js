@@ -425,26 +425,23 @@ class LLMConnector extends EventEmitter {
             });
 
             // Forward token events as chunk events immediately
-            const onToken = (text) => {
+            const onChunk = (text) => {
                 if (text) {
                     this.emit('chunk', text);
                 }
             };
 
-            localLLM.on('token', onToken);
+            localLLM.on('chunk', onChunk);
 
             // Handle signal
             if (signal) {
                 signal.addEventListener('abort', () => {
-                    // LocalLLM services handles abort via options.signal
-                    // But we should cleanup listeners
-                    localLLM.off('token', onToken);
+                    localLLM.off('chunk', onChunk);
                 });
             }
 
             try {
                 // Generate and wait for completion
-                // Pass signal to localLLM
                 const response = await localLLM.generate(question, systemPrompt, {
                     signal,
                     temperature: this.config.temperature,
@@ -455,7 +452,7 @@ class LLMConnector extends EventEmitter {
                 });
 
                 // Cleanup listener
-                localLLM.off('token', onToken);
+                localLLM.off('chunk', onChunk);
 
                 if (response === null && signal?.aborted) {
                     return null;

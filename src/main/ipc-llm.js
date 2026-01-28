@@ -168,10 +168,35 @@ function registerLLMHandlers(services) {
        LLM – QUICK GENERATE
     ============================ */
     ipcMain.handle('llm:generate', async (_, prompt, systemPromptOverride) => {
-        const sysPrompt = systemPromptOverride ||
-            'Você é um dicionário técnico conciso.';
+        if (systemPromptOverride) {
+            return llmConnector.generateDefinition(prompt, systemPromptOverride);
+        }
 
-        return llmConnector.generateDefinition(prompt, sysPrompt);
+        // Try to load current profile to maintain context consistency
+        try {
+            const profile = settingsManager.loadProfile(
+                settingsManager.get('currentAssistantId') || 'default'
+            ) || {};
+
+            let sysPrompt = [
+                profile.systemPrompt,
+                profile.assistantInstructions,
+                profile.additionalContext
+            ].filter(Boolean).join('\n\n');
+
+            sysPrompt += settingsManager.buildBehaviorPrompt(profile);
+
+            if (!sysPrompt.trim()) {
+                sysPrompt = 'Você é um dicionário técnico conciso.';
+            } else {
+                sysPrompt += '\n\nResponda agora ao termo solicitado de forma concisa e técnica seguindo as orientações acima.';
+            }
+
+            return llmConnector.generateDefinition(prompt, sysPrompt);
+        } catch (e) {
+            console.error('[IPC-LLM] Failed to load profile for generate:', e);
+            return llmConnector.generateDefinition(prompt, 'Você é um dicionário técnico conciso.');
+        }
     });
 
 

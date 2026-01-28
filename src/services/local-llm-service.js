@@ -17,6 +17,7 @@ class LocalLLMService extends EventEmitter {
         this.isLoading = false;
         this.isGenerating = false;
         this.abortController = null;
+        this._generationLock = Promise.resolve(); // Mutex for sequence operations
     }
 
     /**
@@ -47,8 +48,6 @@ class LocalLLMService extends EventEmitter {
        ========================= */
     async loadModel(modelPath, options = {}) {
         if (this.activeModelPath === modelPath && this.model) {
-            // If model is already loaded, we might need to reload if performance settings changed
-            // For now, simpler to just return if path matches, but ideally check opts.
             return;
         }
         if (this.isLoading) throw new Error('Model is already loading');
@@ -62,7 +61,7 @@ class LocalLLMService extends EventEmitter {
 
             const threads = options.threads || Math.max(2, Math.min(os.cpus().length, 8));
             const contextSize = options.contextSize || 4096;
-            const gpuLayers = options.gpuLayers || 0; // 0 = auto/off
+            const gpuLayers = options.gpuLayers || 0;
             const batchSize = options.batchSize || 512;
 
             console.log(`[LocalLLM] Loading model: ${path.basename(modelPath)}`);
@@ -70,20 +69,14 @@ class LocalLLMService extends EventEmitter {
 
             this.model = await this.llama.loadModel({
                 modelPath,
-                gpuLayers: gpuLayers === 'max' ? -1 : gpuLayers // -1 usually means all in some bindings, but node-llama-cpp uses number
+                gpuLayers: gpuLayers === 'max' ? -1 : gpuLayers
             });
 
             this.context = await this.model.createContext({
                 threads,
                 contextSize,
-                batchSize
-            });
-
-            this.sequence = this.context.getSequence();
-
-            const { LlamaChatSession } = this.llamaCppModule;
-            this.session = new LlamaChatSession({
-                contextSequence: this.sequence
+                batchSize,
+                sequences: 3 // Higher sequences for safer cleanup
             });
 
             this.activeModelPath = modelPath;
@@ -94,7 +87,6 @@ class LocalLLMService extends EventEmitter {
                 gpuLayers
             });
 
-            // Emit initial status
             this.emitStatus();
 
         } catch (err) {
@@ -109,166 +101,132 @@ class LocalLLMService extends EventEmitter {
        GENERATE
        ========================= */
     async generate(question, systemPrompt = '', options = {}) {
-        if (this.isGenerating) {
-            console.warn('[LocalLLM] Generation already in progress, attempting to abort previous...');
-            this.abort();
-            // Wait a tiny bit for cleanup
-            await new Promise(r => setTimeout(r, 100));
-            if (this.isGenerating) throw new Error('Generation already in progress and could not be stopped');
-        }
-
-        if (!this.context) {
-            throw new Error('No local model loaded');
-        }
-
-        this.abortController = new AbortController();
-
-        // Link external signal
-        if (options.signal) {
-            if (options.signal.aborted) throw new Error('Aborted');
-            options.signal.addEventListener('abort', () => {
-                this.abortController?.abort();
-            }, { once: true });
-        }
-
-        this.isGenerating = true;
-        this.emitStatus(); // Update status start
-        console.log('[LocalLLM] Starting generation...');
-
-        let lastChunk = '';
-        let repeatCount = 0;
+        // Acquire mutex lock properly inside the async method
+        const lockRelease = await this._acquireLock();
 
         try {
-            // 🔥 CRIA NOVA SEQUENCE (evita loop)
-            // Note: Recreating sequence clears history? No, session manages history. 
-            // But here we are disposing sequence.
-            // If we want to keep history, we should keep the sequence.
-            // PROMPT: The user wants "Context Monitoring". If we wipe conversation every time, context usage is low.
-            // For "Interview Insight", usually we want fresh context per question or short history.
-            // The previous code disposed sequence every time. 
-            // I will keep this behavior for now to ensure stability, but we should probably 
-            // let the Session manage context if we want "History".
-            // However, the requested feature is "Model Control Panel", not "Fix Context Retention".
-            // I will stick to current behavior but make sure `emitStatus` reflects the current state.
-
-            if (this.sequence) {
-                await this.sequence.dispose();
+            if (this.isGenerating) {
+                console.warn('[LocalLLM] Generation already in progress, aborting previous...');
+                this.abort();
+                await new Promise(r => setTimeout(r, 100));
             }
 
-            this.sequence = this.context.getSequence();
+            if (!this.context) throw new Error('No local model loaded');
 
-            const { LlamaChatSession } = this.llamaCppModule;
-            this.session = new LlamaChatSession({
-                contextSequence: this.sequence,
-                systemPrompt
-            });
+            this.abortController = new AbortController();
 
-            // Extract generation params with new defaults
-            const temperature = options.temperature || 0.3;
-            const topP = options.topP || 0.9;
-            const topK = options.topK || 40;
-            const repeatPenalty = options.repeatPenalty || 1.15;
-            const maxTokens = options.maxTokens || 512;
+            // Link external signal
+            if (options.signal) {
+                options.signal.addEventListener('abort', () => this.abortController.abort(), { once: true });
+            }
 
-            const response = await this.session.prompt(question, {
-                temperature,
-                topP,
-                topK,
-                repeatPenalty,
-                maxTokens,
-                stopOnAbortSignal: true,
-                signal: this.abortController.signal,
-                stop: ["User:", "Human:", "AI:", "##", "Insight:"],
-                onTextChunk: (text) => {
-                    if (this.abortController?.aborted) {
-                        return;
-                    }
-                    // Update token count estimation (rough)
-                    this.usedTokens++;
-                    const currentPercent = Math.min((this.usedTokens / this.context.contextSize) * 100, 100);
+            this.isGenerating = true;
+            this.emitStatus();
+            console.log('[LocalLLM] Starting generation...');
 
-                    // Emit status every 10 tokens or so to avoid spam
-                    if (this.usedTokens % 10 === 0) {
-                        this.emitStatus();
-                    }
+            let lastChunk = '';
+            let repeatCount = 0;
 
-                    // 🛑 DETECTOR DE LOOP
-                    if (text === lastChunk) {
-                        repeatCount++;
-                        if (repeatCount > 6) {
-                            console.warn('[LocalLLM] Loop detected, aborting via signal');
-                            this.abortController?.abort();
-                            return;
+            try {
+                // Ensure fresh session/sequence
+                if (this.session) await this.session.dispose().catch(() => { });
+                if (this.sequence) await this.sequence.dispose().catch(() => { });
+
+                // Essential for bridge stability
+                await new Promise(r => setTimeout(r, 50));
+
+                this.sequence = this.context.getSequence();
+
+                const { LlamaChatSession } = this.llamaCppModule;
+                this.session = new LlamaChatSession({
+                    contextSequence: this.sequence,
+                    systemPrompt
+                });
+
+                const temperature = options.temperature || 0.3;
+                const topP = options.topP || 0.9;
+                const topK = options.topK || 40;
+                const repeatPenalty = options.repeatPenalty || 1.15;
+                const maxTokens = options.maxTokens || 512;
+
+                const response = await this.session.prompt(question, {
+                    temperature,
+                    topP,
+                    topK,
+                    repeatPenalty,
+                    maxTokens,
+                    stopOnAbortSignal: true,
+                    signal: this.abortController.signal,
+                    onToken: (tokens) => {
+                        const chunk = this.context.model.detokenize(tokens);
+
+                        // Repeat filter
+                        if (chunk === lastChunk && chunk.length > 3) {
+                            repeatCount++;
+                            if (repeatCount > 5) {
+                                this.abort();
+                                return;
+                            }
+                        } else {
+                            repeatCount = 0;
+                            lastChunk = chunk;
                         }
 
-                    } else {
-                        repeatCount = 0;
+                        this.emit('chunk', chunk);
                     }
+                });
 
-                    lastChunk = text;
+                console.log('[LocalLLM] Generation complete');
+                this.emit('complete', response);
+                return response;
 
-                    // 🔥 STREAM REAL
-                    this.emit('token', text);
-
-                    // Optional: Emit detailed status sparsely if needed, 
-                    // but onToken might be too frequent.
+            } catch (err) {
+                if (err.name === 'AbortError' || this.abortController.signal.aborted) {
+                    console.log('[LocalLLM] Generation aborted');
+                    this.emit('aborted');
+                } else {
+                    console.error('Local LLM error:', err);
+                    this.emit('error', err);
                 }
-            });
-
-            console.log('[LocalLLM] Generation complete');
-            this.emitStatus(); // Update status end
-            return response;
-
-        } catch (err) {
-            if (err.name === 'AbortError' || err.message === 'Aborted') {
-                console.log('[LocalLLM] Generation aborted');
-                this.emit('aborted');
-                return null;
+                throw err;
             }
-            this.emit('error', err);
-            throw err;
         } finally {
             this.isGenerating = false;
+            lockRelease(); // Release mutex
+            this.emitStatus();
         }
     }
 
     /**
-     * Emit current model status (context usage)
+     * Mutex implementation
      */
+    async _acquireLock() {
+        let release;
+        const nextLock = new Promise(resolve => { release = resolve; });
+        const currentLock = this._generationLock;
+        this._generationLock = nextLock;
+        await currentLock;
+        return release;
+    }
+
+    /* =========================
+       STATUS & UTILS
+       ========================= */
     emitStatus() {
         if (!this.context) return;
-
-        // Accurate way depends on node-llama-cpp version.
-        // v3 doesn't expose `context.getFreeTokens()` directly easily on JS side always.
-        // We can estimate or try to access internal properties if available.
-        // For now, we will send max context size.
-        // Ideally we track `session.sequence.tokenMeter.used`
-
-        // Mocking used for now as `node-llama-cpp` API is complex to sync without docs.
-        // But we can send the configured Context Size.
-
         const status = {
             loaded: true,
             model: this.activeModelPath ? path.basename(this.activeModelPath) : null,
-            contextSize: this.context.contextSize,
-            // usedTokens: this.sequence ? this.sequence.tokenMeter.used : 0 
-            // (Assuming this API exists, otherwise we'll just send basics)
+            contextSize: this.context.contextSize
         };
-
         try {
-            // Attempt to get used tokens if available
             if (this.sequence && this.sequence.tokenMeter) {
                 status.usedTokens = this.sequence.tokenMeter.used;
             }
         } catch (e) { }
-
         this.emit('model:status', status);
     }
 
-
-    /* =========================
-       UNLOAD
-       ========================= */
     async unload() {
         try {
             if (this.session) await this.session.dispose();
@@ -276,13 +234,11 @@ class LocalLLMService extends EventEmitter {
             if (this.context) await this.context.dispose();
             if (this.model) await this.model.dispose();
         } catch { }
-
         this.session = null;
         this.sequence = null;
         this.context = null;
         this.model = null;
         this.activeModelPath = null;
-
         this.emit('unloaded');
     }
 }

@@ -211,58 +211,51 @@ class SettingsManager {
      */
     buildBehaviorPrompt(profile = {}) {
         const directives = [];
+        const negativeDirectives = [];
 
-        // Response style directives
+        // 1. GATHER NEGATIVE RULES (MANDATORY CONSTRAINTS)
+        if (profile.negativeRules && profile.negativeRules.trim()) {
+            const rules = profile.negativeRules.split('\n').filter(r => r.trim()).map(r => `- ${r.trim().toUpperCase()}`);
+            if (rules.length > 0) {
+                negativeDirectives.push('\n[CRITICAL CONSTRAINTS - NEVER DO THESE]:\n' + rules.join('\n'));
+            }
+        }
+
+        // 2. Performance / Style directives
         const styleMap = {
-            short: 'Seja DIRETO e BREVE. Sem introduções ou conclusões vazias. Vá direto ao ponto.',
-            didactic: 'Responda de forma DIDÁTICA, passo a passo. Numere as etapas quando apropriado.',
-            strategic: 'Responda de forma ESTRATÉGICA: dê a resposta principal e adicione um insight ou recomendação relevante.',
-            code: 'CÓDIGO PRIMEIRO: quando aplicável, mostre o código antes da explicação. Mantenha explicações mínimas.'
+            short: 'SEJA DIRETO E BREVE. Sem introduções ou conclusões vazias.',
+            didactic: 'Explique de forma DIDÁTICA, passo a passo.',
+            strategic: 'Dê a resposta principal + INSIGHT ESTRATÉGICO.',
+            code: 'CÓDIGO PRIMEIRO. Explicação mínima depois.'
         };
         if (profile.responseStyle && styleMap[profile.responseStyle]) {
             directives.push(styleMap[profile.responseStyle]);
         }
 
-        // Initiative level directives
+        // Initiative level
         const initiativeMap = {
-            minimal: 'Responda APENAS o que foi perguntado. Não adicione informações extras.',
-            brief: 'Pode complementar com observações breves se muito relevantes.',
-            proactive: 'Sugira melhorias ou alertas quando identificar oportunidades ou riscos.'
+            minimal: 'Responda APENAS o que foi perguntado.',
+            brief: 'Complemente brevemente se necessário.',
+            proactive: 'Sugira melhorias e antecipe dúvidas.'
         };
         if (profile.initiativeLevel && initiativeMap[profile.initiativeLevel]) {
             directives.push(initiativeMap[profile.initiativeLevel]);
         }
 
-        // Response size directives
-        const sizeMap = {
-            very_short: 'MÁXIMO 2-3 linhas por resposta. Seja extremamente conciso.',
-            medium: 'Mantenha respostas de tamanho moderado. Máximo 3-5 pontos.',
-            detailed: 'Pode dar respostas detalhadas quando a complexidade exigir.'
-        };
-        if (profile.responseSize && sizeMap[profile.responseSize]) {
-            directives.push(sizeMap[profile.responseSize]);
+        // Hallucination preventers
+        if (profile.admitIgnorance) directives.push('Se não souber, ADMITA. Jamais invente fatos.');
+        if (profile.askClarification) directives.push('Se a pergunta for vaga, PEÇA ESCLARECIMENTO.');
+        if (profile.avoidGeneric) directives.push('EVITE clichês e respostas genéricas.');
+
+        let finalPrompt = '';
+        if (negativeDirectives.length > 0) {
+            finalPrompt += negativeDirectives.join('\n') + '\n\n';
+        }
+        if (directives.length > 0) {
+            finalPrompt += '[BEHAVIORAL GUIDELINES]:\n' + directives.join('\n');
         }
 
-        // Validation / Anti-hallucination directives
-        if (profile.admitIgnorance) {
-            directives.push('Se não souber a resposta, ADMITA explicitamente. Nunca invente informações.');
-        }
-        if (profile.askClarification) {
-            directives.push('Se a pergunta for ambígua ou muito vaga, peça esclarecimento antes de responder.');
-        }
-        if (profile.avoidGeneric) {
-            directives.push('EVITE respostas genéricas. Seja específico e direto ao contexto.');
-        }
-
-        // Negative rules
-        if (profile.negativeRules && profile.negativeRules.trim()) {
-            const rules = profile.negativeRules.split('\n').filter(r => r.trim()).map(r => `- ${r.trim()}`);
-            if (rules.length > 0) {
-                directives.push('\n## O que NÃO fazer:\n' + rules.join('\n'));
-            }
-        }
-
-        return directives.length > 0 ? '\n\n## Comportamento:\n' + directives.join('\n') : '';
+        return finalPrompt ? '\n\n' + finalPrompt : '';
     }
 
     /**

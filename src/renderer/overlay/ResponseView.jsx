@@ -1,147 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Copy, Check, Loader2, Sparkles, AlertCircle, CheckCircle, Square, BookOpen } from 'lucide-react';
+import { MessageItem } from './components/MessageItem';
 import clsx from 'clsx';
-
-// Message Component with Advanced Interaction (Lighting & Multi-select)
-const MessageItem = React.memo(({ message, isLast, onWordClick, hotkey }) => {
-    // Split text into words/tokens for individual interaction
-    const words = useMemo(() => {
-        if (!message.text) return [];
-        // Split by spaces but keep delimiters attached or separate?
-        // Simple split by space for now to enable word-level interaction
-        return message.text.split(/(\s+)/);
-    }, [message.text]);
-
-    const [selection, setSelection] = useState({ start: null, end: null, isSelecting: false });
-    const containerRef = useRef(null);
-
-    // Helper to get word index from element
-    const getWordIndex = (target) => {
-        if (target.dataset.index) return parseInt(target.dataset.index);
-        return -1;
-    };
-
-    const handleMouseDown = (e) => {
-        const modifier = hotkey || 'ctrl';
-        const isTriggered = (modifier === 'alt' && e.altKey) || (modifier === 'ctrl' && e.ctrlKey); // Support both for drag start
-
-        // Only start selection if Alt is held (or configured key)
-        if (e.altKey && e.button === 0) {
-            const idx = getWordIndex(e.target);
-            if (idx !== -1) {
-                e.preventDefault();
-                setSelection({ start: idx, end: idx, isSelecting: true });
-            }
-        }
-    };
-
-    const handleMouseEnter = (e) => {
-        if (selection.isSelecting) {
-            const idx = getWordIndex(e.target);
-            if (idx !== -1) {
-                setSelection(prev => ({ ...prev, end: idx }));
-            }
-        }
-    };
-
-    const handleMouseUp = (e) => {
-        if (selection.isSelecting) {
-            const start = Math.min(selection.start, selection.end);
-            const end = Math.max(selection.start, selection.end);
-
-            // Extract the selected phrase
-            // We need to reconstruct from the words array
-            // Filter out only the content words, avoiding excessive whitespace if needed, 
-            // but here we just slice the original array which contains spaces as even indices
-            const selectedPhrase = words.slice(start, end + 1).join('');
-
-            if (selectedPhrase.trim()) {
-                onWordClick(selectedPhrase.trim(), e, true); // true = forceful/phrase
-            }
-
-            setSelection({ start: null, end: null, isSelecting: false });
-        }
-    };
-
-    // Click handler for single word (if not dragging)
-    const handleClick = (e) => {
-        // If we just finished a drag, don't trigger click
-        if (selection.isSelecting) return;
-
-        const idx = getWordIndex(e.target);
-        if (idx !== -1) {
-            const word = words[idx];
-            if (word.trim()) {
-                // Check modifier for single click
-                const modifier = hotkey || 'ctrl';
-                const isTriggered =
-                    (modifier === 'ctrl' && e.ctrlKey) ||
-                    (modifier === 'alt' && e.altKey) ||
-                    (modifier === 'shift' && e.shiftKey) ||
-                    (modifier === 'meta' && e.metaKey);
-
-                if (isTriggered) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onWordClick(word.trim(), e, false);
-                }
-            }
-        }
-    };
-
-    return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 mb-6">
-            {/* Title / Separator */}
-            <div className="flex items-center gap-3 mb-2 opacity-50 select-none">
-                <div className="h-px bg-white/20 flex-1" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">
-                    {message.title || 'Insight'} • {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
-                <div className="h-px bg-white/20 flex-1" />
-            </div>
-
-            {/* Content with Lighting Effect */}
-            <div
-                ref={containerRef}
-                className="text-[14px] leading-relaxed text-gray-100 font-medium"
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-            >
-                {words.map((word, i) => {
-                    const isSelected = selection.isSelecting &&
-                        i >= Math.min(selection.start, selection.end) &&
-                        i <= Math.max(selection.start, selection.end);
-
-                    // Skip rendering formatting for pure spaces efficiently? 
-                    // No, we need spaces to maintain layout.
-                    if (!word.trim()) return <span key={i}>{word}</span>;
-
-                    return (
-                        <span
-                            key={i}
-                            data-index={i}
-                            onMouseEnter={handleMouseEnter}
-                            onClick={handleClick}
-                            className={clsx(
-                                "transition-all duration-200 inline-block rounded-sm px-0.5 -mx-0.5 border border-transparent",
-                                // Lighting Effect:
-                                "hover:text-blue-300 hover:scale-105 hover:bg-blue-500/10 hover:shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:border-blue-500/20 cursor-text",
-                                // Selection State:
-                                isSelected && "bg-blue-500/30 text-white scale-100"
-                            )}
-                        >
-                            {word}
-                        </span>
-                    );
-                })}
-                {message.isStreaming && (
-                    <span className="inline-block w-2 h-4 bg-purple-400 ml-1 animate-pulse rounded-sm align-middle" />
-                )}
-            </div>
-        </div>
-    );
-});
+import './markdown.css';
 
 export default function ResponseView() {
     const [history, setHistory] = useState([]);
@@ -408,7 +270,7 @@ export default function ResponseView() {
                 )}
 
                 <div className="flex flex-col gap-1 pb-4">
-                    {history.map((msg, index) => (
+                    {history.map((msg) => (
                         <MessageItem
                             key={msg.id}
                             message={msg}
