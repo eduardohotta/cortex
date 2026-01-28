@@ -7,13 +7,13 @@ export const MessageItem = React.memo(({ message, onWordClick, hotkey }) => {
     const containerRef = useRef(null);
 
     const getWordIndex = (target) => {
-        return target.dataset.index || null;
+        return target.dataset.index ? parseInt(target.dataset.index, 10) : null;
     };
 
     const handleMouseDown = (e) => {
         if (e.altKey && e.button === 0) {
             const idx = getWordIndex(e.target);
-            if (idx) {
+            if (idx !== null) {
                 e.preventDefault();
                 setSelection({ start: idx, end: idx, isSelecting: true });
             }
@@ -23,7 +23,7 @@ export const MessageItem = React.memo(({ message, onWordClick, hotkey }) => {
     const handleMouseEnter = (e) => {
         if (selection.isSelecting) {
             const idx = getWordIndex(e.target);
-            if (idx) {
+            if (idx !== null) {
                 setSelection(prev => ({ ...prev, end: idx }));
             }
         }
@@ -31,6 +31,22 @@ export const MessageItem = React.memo(({ message, onWordClick, hotkey }) => {
 
     const handleMouseUp = (e) => {
         if (selection.isSelecting) {
+            // Phrase extraction
+            if (containerRef.current) {
+                const words = containerRef.current.querySelectorAll('[data-index]');
+                const selectedWords = Array.from(words)
+                    .filter(w => {
+                        const idx = parseInt(w.getAttribute('data-index'), 10);
+                        return (idx >= selection.start && idx <= selection.end) ||
+                            (idx >= selection.end && idx <= selection.start);
+                    })
+                    .map(w => w.innerText.trim());
+
+                if (selectedWords.length > 0) {
+                    const phrase = selectedWords.join(' ');
+                    onWordClick(phrase, e, true);
+                }
+            }
             setSelection({ start: null, end: null, isSelecting: false });
         }
     };
@@ -38,7 +54,7 @@ export const MessageItem = React.memo(({ message, onWordClick, hotkey }) => {
     const handleClick = (e) => {
         if (selection.isSelecting) return;
         const idx = getWordIndex(e.target);
-        if (idx) {
+        if (idx !== null) {
             const word = e.target.innerText;
             if (word.trim()) {
                 const modifier = hotkey || 'ctrl';

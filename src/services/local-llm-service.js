@@ -129,8 +129,20 @@ class LocalLLMService extends EventEmitter {
 
             try {
                 // Ensure fresh session/sequence
-                if (this.session) await this.session.dispose().catch(() => { });
-                if (this.sequence) await this.sequence.dispose().catch(() => { });
+                if (this.session) {
+                    try {
+                        const p = this.session.dispose();
+                        if (p instanceof Promise) await p;
+                    } catch (e) { console.warn('Session dispose error', e); }
+                    this.session = null;
+                }
+                if (this.sequence) {
+                    try {
+                        const p = this.sequence.dispose();
+                        if (p instanceof Promise) await p;
+                    } catch (e) { console.warn('Sequence dispose error', e); }
+                    this.sequence = null;
+                }
 
                 // Essential for bridge stability
                 await new Promise(r => setTimeout(r, 50));

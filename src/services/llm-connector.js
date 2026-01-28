@@ -461,7 +461,7 @@ class LLMConnector extends EventEmitter {
                 this.emit('complete', response);
                 return response;
             } catch (err) {
-                localLLM.off('token', onToken);
+                localLLM.off('chunk', onChunk);
                 throw err;
             }
         } catch (err) {

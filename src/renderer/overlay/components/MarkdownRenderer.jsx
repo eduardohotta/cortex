@@ -8,18 +8,25 @@ import clsx from 'clsx';
 export const MarkdownRenderer = ({ text, selection, handleMouseEnter, handleClick }) => {
     if (!text) return null;
 
+    let wordCounter = 0;
+
     // Word wrapper for interactivity
     const wrapWords = (rawText, isBold, isItalic, baseKey) => {
         return rawText.split(/(\s+)/).map((word, i) => {
             if (!word.trim()) return <span key={`${baseKey}-${i}`}>{word}</span>;
 
-            const globalIdx = `${baseKey}-${i}`;
-            const isSelected = selection?.isSelecting && selection.start === globalIdx;
+            const currentIdx = wordCounter++;
+
+            // Range check for selection (handles reverse drag too)
+            const isSelected = selection?.isSelecting && (
+                (currentIdx >= selection.start && currentIdx <= selection.end) ||
+                (currentIdx >= selection.end && currentIdx <= selection.start)
+            );
 
             return (
                 <span
                     key={`${baseKey}-${i}`}
-                    data-index={globalIdx}
+                    data-index={currentIdx}
                     onMouseEnter={handleMouseEnter}
                     onClick={handleClick}
                     className={clsx(
