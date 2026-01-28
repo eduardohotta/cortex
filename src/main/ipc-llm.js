@@ -21,11 +21,17 @@ function registerLLMHandlers(services) {
         throw new Error('[IPC-LLM] Missing required services');
     }
 
-    // 🔒 Bind model events only once
+    // 🔒 Bind model and universal LLM events only once
     if (!modelEventsBound) {
         modelManager.on('progress', (d) => broadcastToWindows('model:progress', d));
         modelManager.on('updated', (m) => broadcastToWindows('model:updated', m));
         localLLM.on('model:status', (d) => broadcastToWindows('model:status', d));
+
+        // Centralized chunk bridge: any chunk from connector goes to UI
+        llmConnector.on('chunk', (chunk) => {
+            if (chunk) broadcastToWindows('llm:response-chunk', chunk);
+        });
+
         modelEventsBound = true;
     }
 
@@ -42,7 +48,6 @@ function registerLLMHandlers(services) {
             let queryText = '';
 
             const cleanup = () => {
-                llmConnector.off('chunk', onChunk);
                 llmConnector.off('complete', onComplete);
                 llmConnector.off('error', onError);
                 llmConnector.off('aborted', onAbort);
@@ -54,12 +59,6 @@ function registerLLMHandlers(services) {
                 broadcastToWindows('llm:response-end');
                 cleanup();
                 resolve(null);
-            };
-
-            const onChunk = (chunk) => {
-                if (!chunk) return;
-                fullResponse += chunk;
-                broadcastToWindows('llm:response-chunk', chunk);
             };
 
             const onComplete = () => {
@@ -129,7 +128,11 @@ function registerLLMHandlers(services) {
 
                 broadcastToWindows('llm:response-start');
 
-                llmConnector.on('chunk', onChunk);
+                // Internal tracker for history recording
+                const localTracker = (c) => fullResponse += c;
+                llmConnector.on('chunk', localTracker);
+
+                llmConnector.once('complete', () => llmConnector.off('chunk', localTracker));
                 llmConnector.on('complete', onComplete);
                 llmConnector.on('error', onError);
                 llmConnector.on('aborted', onAbort);
@@ -138,7 +141,6 @@ function registerLLMHandlers(services) {
 
                 if (typeof result === 'string' && !fullResponse) {
                     fullResponse = result;
-                    broadcastToWindows('llm:response-chunk', result);
                     onComplete();
                 }
 
@@ -155,7 +157,6 @@ function registerLLMHandlers(services) {
         console.log('[IPC-LLM] Manual stop requested');
         try {
             llmConnector.abort();
-            // Fallback: if Connector didn't emit, we force UI consistency
             broadcastToWindows('llm:response-end');
         } catch (e) {
             console.warn('[IPC-LLM] Stop failed:', e);
@@ -168,11 +169,15 @@ function registerLLMHandlers(services) {
        LLM – QUICK GENERATE
     ============================ */
     ipcMain.handle('llm:generate', async (_, prompt, systemPromptOverride) => {
+        // Broadscast response-start for word analysis too if we want streaming indicator
+        broadcastToWindows('llm:response-start');
+
         if (systemPromptOverride) {
-            return llmConnector.generateDefinition(prompt, systemPromptOverride);
+            const result = await llmConnector.generateDefinition(prompt, systemPromptOverride);
+            broadcastToWindows('llm:response-end');
+            return result;
         }
 
-        // Try to load current profile to maintain context consistency
         try {
             const profile = settingsManager.loadProfile(
                 settingsManager.get('currentAssistantId') || 'default'
@@ -192,13 +197,16 @@ function registerLLMHandlers(services) {
                 sysPrompt += '\n\nResponda agora ao termo solicitado de forma concisa e técnica seguindo as orientações acima.';
             }
 
-            return llmConnector.generateDefinition(prompt, sysPrompt);
+            const result = await llmConnector.generateDefinition(prompt, sysPrompt);
+            broadcastToWindows('llm:response-end');
+            return result;
         } catch (e) {
             console.error('[IPC-LLM] Failed to load profile for generate:', e);
-            return llmConnector.generateDefinition(prompt, 'Você é um dicionário técnico conciso.');
+            const result = await llmConnector.generateDefinition(prompt, 'Você é um dicionário técnico conciso.');
+            broadcastToWindows('llm:response-end');
+            return result;
         }
     });
-
 
     /* ===========================
        MODEL / HF

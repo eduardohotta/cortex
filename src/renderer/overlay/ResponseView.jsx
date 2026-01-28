@@ -152,11 +152,14 @@ export default function ResponseView() {
     };
 
     const handleWordClick = useCallback(async (phrase, e, isPhrase) => {
+        // Clear previous state for a new request
+        setStatus('processing');
+
         // Create a new history entry for the definition
         const definitionEntry = {
             id: Date.now(),
             title: isPhrase ? 'Analysis' : `Definição: ${phrase}`,
-            text: 'Analisando contexto...',
+            text: '', // Start empty for streaming
             timestamp: Date.now(),
             isStreaming: true
         };
@@ -170,20 +173,23 @@ export default function ResponseView() {
                 ? `Explique brevemente a frase/conceito: "${phrase}". Contexto: Entrevista Técnica.`
                 : `Defina o termo técnico: "${phrase}". Seja conciso.`;
 
+            // llm:generate now broadcasts chunks via IPC
             const result = await window.electronAPI.llm.generate(prompt);
 
+            // Final sync after generation completes
             const currentHistory = [...historyRef.current];
             const entryIndex = currentHistory.findIndex(entry => entry.id === definitionEntry.id);
             if (entryIndex !== -1) {
                 currentHistory[entryIndex] = {
                     ...currentHistory[entryIndex],
-                    text: result,
+                    text: result || currentHistory[entryIndex].text,
                     isStreaming: false
                 };
                 historyRef.current = currentHistory;
                 setHistory(currentHistory);
             }
         } catch (err) {
+            console.error('Secondary generate failed:', err);
             const currentHistory = [...historyRef.current];
             const entryIndex = currentHistory.findIndex(entry => entry.id === definitionEntry.id);
             if (entryIndex !== -1) {
@@ -195,6 +201,8 @@ export default function ResponseView() {
                 historyRef.current = currentHistory;
                 setHistory(currentHistory);
             }
+        } finally {
+            setStatus('complete');
         }
     }, [smartAutoScroll]);
 
