@@ -169,7 +169,7 @@ export default function FloatingRemote({ standalone = false }) {
             <div
                 ref={containerRef}
                 className={clsx(
-                    "flex items-center gap-2 transition-all duration-300",
+                    "flex items-center gap-2 transition-all duration-300 cursor-default",
                     standalone
                         ? "bg-[#0d0d0f] border border-white/12 rounded-xl px-2 py-2 shadow-2xl"
                         : "fixed bottom-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-[#0d0d0f] border border-white/15 rounded-2xl shadow-[0_30px_90px_rgba(0,0,0,0.75)] scale-[1.05]"

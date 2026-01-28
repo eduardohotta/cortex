@@ -163,7 +163,7 @@ export default function TranscriptionView() {
     );
 
     return (
-        <div className="h-full flex flex-col bg-transparent">
+        <div className="h-full flex flex-col bg-transparent cursor-default">
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
