@@ -32,6 +32,22 @@ class SettingsManager {
                     systemPrompt: this.getDefaultPrompt('rh'),
                     overlayOpacity: 90,
                     hotkeyExplain: 'ctrl',
+                    // UI Labels & Prompts (Externalized from ResponseView)
+                    mainResponseTitle: 'Insight',
+                    phraseAnalysisTitle: 'Análise',
+                    wordDefinitionTitle: 'Definição',
+                    phraseAnalysisPrompt: 'Explique brevemente a frase/conceito: "{phrase}". Contexto: Entrevista Técnica.',
+                    wordDefinitionPrompt: 'Defina o termo técnico: "{phrase}". Seja conciso.',
+                    labelReady: 'Pronto',
+                    labelProcessing: 'Processando',
+                    labelStreaming: 'Respondendo',
+                    labelComplete: 'Completo',
+                    labelError: 'Erro',
+                    labelStop: 'Parar',
+                    labelEnd: 'Encerrar',
+                    labelCopy: 'Copiar Último',
+                    labelCopied: 'Copiado!',
+                    labelTipsPrefix: 'Dica: Hover + {hotkey} para highlights. Alt + Drag para seleção.',
                     profiles: {}
                 }
             });

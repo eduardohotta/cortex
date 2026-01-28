@@ -196,6 +196,7 @@ function registerLLMHandlers(services) {
             } else {
                 sysPrompt += '\n\nResponda agora ao termo solicitado de forma concisa e técnica seguindo as orientações acima.';
             }
+            console.log('Generating definition for:', prompt);
 
             const result = await llmConnector.generateDefinition(prompt, sysPrompt);
             broadcastToWindows('llm:response-end');

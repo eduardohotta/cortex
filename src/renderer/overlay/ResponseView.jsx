@@ -12,6 +12,12 @@ export default function ResponseView() {
     const [timer, setTimer] = useState(0);
     const [copied, setCopied] = useState(false);
     const [hotkeyExplain, setHotkeyExplain] = useState('ctrl');
+    const [config, setConfig] = useState({});
+
+    const { state } = useApp();
+    const currentAssistant = useMemo(() =>
+        state.assistants.find(a => a.id === state.currentAssistantId) || { name: 'Assistant' }
+        , [state.assistants, state.currentAssistantId]);
 
     const historyRef = useRef([]);
     const scrollContainerRef = useRef(null);
@@ -21,8 +27,13 @@ export default function ResponseView() {
     // Load settings
     useEffect(() => {
         if (window.electronAPI) {
-            window.electronAPI.settings.get('hotkeyExplain').then(k => setHotkeyExplain(k || 'ctrl'));
+            window.electronAPI.settings.getAll().then(all => {
+                setConfig(all);
+                setHotkeyExplain(all.hotkeyExplain || 'ctrl');
+            });
+
             const cleanup = window.electronAPI.settings.onSettingsChanged(({ key, value }) => {
+                setConfig(prev => ({ ...prev, [key]: value }));
                 if (key === 'hotkeyExplain') setHotkeyExplain(value);
             });
             return cleanup;
@@ -49,7 +60,7 @@ export default function ResponseView() {
             window.electronAPI.llm.onResponseStart(() => {
                 const newEntry = {
                     id: Date.now(),
-                    title: 'Insight',
+                    title: currentAssistant.name || config.mainResponseTitle || 'Insight',
                     text: '',
                     timestamp: Date.now(),
                     isStreaming: true
@@ -116,7 +127,7 @@ export default function ResponseView() {
         return () => {
             cleanup.forEach(fn => fn && fn());
         };
-    }, [smartAutoScroll]);
+    }, [smartAutoScroll, currentAssistant.name, config.mainResponseTitle]);
 
     // Timer
     useEffect(() => {
@@ -155,10 +166,15 @@ export default function ResponseView() {
         // Clear previous state for a new request
         setStatus('processing');
 
+        // Titles from config
+        const titlePrefix = isPhrase
+            ? (config.phraseAnalysisTitle || 'Análise')
+            : (config.wordDefinitionTitle || 'Definição');
+
         // Create a new history entry for the definition
         const definitionEntry = {
             id: Date.now(),
-            title: isPhrase ? 'Analysis' : `Definição: ${phrase}`,
+            title: isPhrase ? titlePrefix : `${titlePrefix}: ${phrase}`,
             text: '', // Start empty for streaming
             timestamp: Date.now(),
             isStreaming: true
@@ -169,9 +185,11 @@ export default function ResponseView() {
         requestAnimationFrame(smartAutoScroll);
 
         try {
-            const prompt = isPhrase
-                ? `Explique brevemente a frase/conceito: "${phrase}". Contexto: Entrevista Técnica.`
-                : `Defina o termo técnico: "${phrase}". Seja conciso.`;
+            const template = isPhrase
+                ? (config.phraseAnalysisPrompt || 'Explique brevemente a frase/conceito: "{phrase}". Contexto: Entrevista Técnica.')
+                : (config.wordDefinitionPrompt || 'Defina o termo técnico: "{phrase}". Seja conciso.');
+
+            const prompt = template.replace('{phrase}', phrase);
 
             // llm:generate now broadcasts chunks via IPC
             const result = await window.electronAPI.llm.generate(prompt);
@@ -195,7 +213,7 @@ export default function ResponseView() {
             if (entryIndex !== -1) {
                 currentHistory[entryIndex] = {
                     ...currentHistory[entryIndex],
-                    text: "Erro ao buscar definição.",
+                    text: config.labelError || "Erro ao buscar definição.",
                     isStreaming: false
                 };
                 historyRef.current = currentHistory;
@@ -204,26 +222,26 @@ export default function ResponseView() {
         } finally {
             setStatus('complete');
         }
-    }, [smartAutoScroll]);
+    }, [smartAutoScroll, config]);
 
     // Status Badge (Memoized)
     const StatusBadge = useMemo(() => {
         const statusConfig = {
-            idle: { icon: Sparkles, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Pronto' },
-            processing: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/10', label: 'Processando', animate: true },
-            streaming: { icon: Sparkles, color: 'text-purple-400', bg: 'bg-purple-500/20', label: 'Respondendo', animate: true },
-            complete: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Completo' },
-            error: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Erro' }
+            idle: { icon: Sparkles, color: 'text-gray-500', bg: 'bg-gray-500/10', label: config.labelReady || 'Pronto' },
+            processing: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/10', label: config.labelProcessing || 'Processando', animate: true },
+            streaming: { icon: Sparkles, color: 'text-purple-400', bg: 'bg-purple-500/20', label: config.labelStreaming || 'Respondendo', animate: true },
+            complete: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: config.labelComplete || 'Completo' },
+            error: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: config.labelError || 'Erro' }
         };
-        const config = statusConfig[status] || statusConfig.idle;
-        const Icon = config.icon;
+        const active = statusConfig[status] || statusConfig.idle;
+        const Icon = active.icon;
         return (
-            <div className={clsx("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300", config.bg, config.color)}>
-                <Icon size={10} className={config.animate ? 'animate-spin' : ''} />
-                {config.label}
+            <div className={clsx("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300", active.bg, active.color)}>
+                <Icon size={10} className={active.animate ? 'animate-spin' : ''} />
+                {active.label}
             </div>
         );
-    }, [status]);
+    }, [status, config]);
 
     return (
         <div className="h-full flex flex-col bg-transparent">
@@ -243,11 +261,11 @@ export default function ResponseView() {
                 <div className="flex items-center gap-2">
                     {(status === 'processing' || status === 'streaming') && (
                         <button onClick={handleStop} className="px-3 py-1 bg-red-500 text-white text-[9px] font-black uppercase rounded-md hover:bg-red-600 active:scale-95 transition-all flex items-center gap-1.5">
-                            <Square size={8} fill="currentColor" /> Parar
+                            <Square size={8} fill="currentColor" /> {config.labelStop || 'Parar'}
                         </button>
                     )}
                     <button onClick={handleEndSession} className="px-3 py-1 bg-red-600/10 border border-red-500/20 text-red-500 text-[9px] font-black uppercase rounded-md hover:bg-red-600/20 active:scale-95 transition-all">
-                        Encerrar
+                        {config.labelEnd || 'Encerrar'}
                     </button>
                 </div>
             </div>
@@ -265,7 +283,7 @@ export default function ResponseView() {
                         <BookOpen size={24} className="opacity-50" />
                         <p className="text-[9px] font-black uppercase tracking-[0.3em]">Insights Engine Ready</p>
                         <p className="text-[8px] text-gray-600 text-center max-w-[200px]">
-                            Dica: Hover + {hotkeyExplain.toUpperCase()} para highlights. Alt + Drag para seleção.
+                            {config.labelTipsPrefix ? config.labelTipsPrefix.replace('{hotkey}', hotkeyExplain.toUpperCase()) : `Dica: Hover + ${hotkeyExplain.toUpperCase()} para highlights. Alt + Drag para seleção.`}
                         </p>
                     </div>
                 )}
@@ -273,7 +291,7 @@ export default function ResponseView() {
                 {status === 'processing' && history.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center gap-3">
                         <Loader2 size={24} className="text-blue-400 animate-spin" />
-                        <p className="text-[9px] font-black uppercase tracking-widest text-blue-400/60">Processando...</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-blue-400/60">{config.labelProcessing || 'Processando'}...</p>
                     </div>
                 )}
 
@@ -294,7 +312,7 @@ export default function ResponseView() {
             {history.length > 0 && (
                 <div className="flex-shrink-0 p-3 border-t border-white/10 bg-black/40 flex justify-end">
                     <button onClick={handleCopy} className={clsx("flex items-center gap-1.5 px-3 py-1.5 border text-[9px] font-black uppercase rounded-md transition-all", copied ? "bg-green-500/20 border-green-500/30 text-green-400" : "bg-white/5 border-white/10 text-white hover:bg-white/10")}>
-                        {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copiado!' : 'Copiar Último'}
+                        {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? (config.labelCopied || 'Copiado!') : (config.labelCopy || 'Copiar Último')}
                     </button>
                 </div>
             )}
