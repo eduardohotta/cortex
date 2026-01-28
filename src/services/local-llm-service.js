@@ -16,6 +16,19 @@ class LocalLLMService extends EventEmitter {
         this.activeModelPath = null;
         this.isLoading = false;
         this.isGenerating = false;
+        this.abortController = null;
+    }
+
+    /**
+     * Force abort any current generation
+     */
+    abort() {
+        if (this.isGenerating && this.abortController) {
+            console.log('[LocalLLM] Forced abort');
+            this.abortController.abort();
+            this.isGenerating = false;
+            this.emitStatus();
+        }
     }
 
     /* =========================
@@ -96,12 +109,26 @@ class LocalLLMService extends EventEmitter {
        GENERATE
        ========================= */
     async generate(question, systemPrompt = '', options = {}) {
-        this.abortController = new AbortController();
+        if (this.isGenerating) {
+            console.warn('[LocalLLM] Generation already in progress, attempting to abort previous...');
+            this.abort();
+            // Wait a tiny bit for cleanup
+            await new Promise(r => setTimeout(r, 100));
+            if (this.isGenerating) throw new Error('Generation already in progress and could not be stopped');
+        }
+
         if (!this.context) {
             throw new Error('No local model loaded');
         }
-        if (this.isGenerating) {
-            throw new Error('Generation already in progress');
+
+        this.abortController = new AbortController();
+
+        // Link external signal
+        if (options.signal) {
+            if (options.signal.aborted) throw new Error('Aborted');
+            options.signal.addEventListener('abort', () => {
+                this.abortController?.abort();
+            }, { once: true });
         }
 
         this.isGenerating = true;
