@@ -20,7 +20,7 @@ class SettingsManager {
                     language: 'auto',
                     mode: 'hr',
                     llmProvider: 'google',
-                    llmModel: 'gemini-1.5-flash',
+                    llmModel: 'gemini-2.5-flash',
                     temperature: 0.7,
                     maxTokens: 500,
                     localTopK: 40,

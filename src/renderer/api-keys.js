@@ -53,15 +53,30 @@ export function renderApiKeys() {
 export function updateModelOptions() {
     const provider = elements.llmProvider.value;
     const models = {
-        openai: [{ v: 'gpt-4o', l: 'GPT-4o' }, { v: 'gpt-4o-mini', l: 'GPT-4o Mini' }],
-        groq: [{ v: 'llama-3.3-70b-versatile', l: 'Llama 3.3 70B' }, { v: 'llama-3.1-70b-versatile', l: 'Llama 3.1 70B' }],
-        anthropic: [{ v: 'claude-3-5-sonnet-20241022', l: 'Claude 3.5 Sonnet' }],
+        openai: [
+            { v: 'gpt-4o', l: 'GPT-4o' },
+            { v: 'gpt-4o-mini', l: 'GPT-4o Mini' }
+        ],
+        groq: [
+            { v: 'llama-3.3-70b-versatile', l: 'Llama 3.3 70B' },
+            { v: 'llama-3.1-70b-versatile', l: 'Llama 3.1 70B' }
+        ],
+        anthropic: [
+            { v: 'claude-3-5-sonnet-20241022', l: 'Claude 3.5 Sonnet' }
+        ],
         google: [
-            { v: 'gemini-1.5-pro', l: 'Gemini 1.5 Pro' },
-            { v: 'gemini-1.5-flash', l: 'Gemini 1.5 Flash' },
-            { v: 'gemini-pro', l: 'Gemini 1.0 Pro' }
+            { v: 'gemini-3-pro-preview', l: 'Gemini 3 Pro (Preview)' },
+            { v: 'gemini-3-flash-preview', l: 'Gemini 3 Flash (Preview)' },
+
+            { v: 'gemini-2.5-pro', l: 'Gemini 2.5 Pro' },
+            { v: 'gemini-2.5-flash', l: 'Gemini 2.5 Flash' },
+            { v: 'gemini-2.5-flash-lite', l: 'Gemini 2.5 Flash-Lite' },
+
+            { v: 'gemini-2.0-flash', l: 'Gemini 2.0 Flash (Deprecated)' },
+            { v: 'gemini-2.0-flash-lite', l: 'Gemini 2.0 Flash-Lite (Deprecated)' }
         ]
     };
+
     const list = models[provider] || [];
     elements.llmModel.innerHTML = list.map(m => `<option value="${m.v}">${m.l}</option>`).join('');
 }
