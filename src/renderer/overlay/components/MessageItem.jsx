@@ -31,8 +31,10 @@ export const MessageItem = React.memo(({ message, onWordClick, hotkey }) => {
 
     const handleMouseUp = (e) => {
         if (selection.isSelecting) {
-            // Phrase extraction
-            if (containerRef.current) {
+            // Only trigger if we actually selected more than one word 
+            // OR if we dragged to a different index.
+            // If start === end and it was just a click, handleClick will handle it.
+            if (selection.start !== selection.end && containerRef.current) {
                 const words = containerRef.current.querySelectorAll('[data-index]');
                 const selectedWords = Array.from(words)
                     .filter(w => {

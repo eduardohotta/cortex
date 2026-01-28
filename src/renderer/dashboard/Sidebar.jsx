@@ -7,8 +7,12 @@ export function Sidebar({ onOpenSettings }) {
     const { state, dispatch } = useApp();
     const { assistants, currentAssistantId } = state;
 
-    const handleSelect = (id) => {
+    const handleSelect = async (id) => {
         dispatch({ type: ACTIONS.SET_ACTIVE_ASSISTANT, payload: id });
+        // Persist to backend so LLM service knows which one is active
+        if (window.electronAPI) {
+            await window.electronAPI.settings.set('currentAssistantId', id);
+        }
     };
 
     const handleCreate = async () => {

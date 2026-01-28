@@ -256,9 +256,11 @@ class SpeechRecognitionService extends EventEmitter {
 
         this.pythonProcess.stdout.on('data', (data) => {
             for (const line of data.toString().split('\n')) {
-                if (!line.trim()) continue;
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
                 try {
-                    const msg = JSON.parse(line);
+                    const msg = JSON.parse(trimmed);
                     if (msg.status === 'ready') {
                         this.whisperReady = true;
                         if (this.pendingAudio.length) {
@@ -269,19 +271,31 @@ class SpeechRecognitionService extends EventEmitter {
                         this.emit('transcript', msg);
                     } else if (msg.status === 'fallback_cpu') {
                         this.emit('cuda-fallback', msg);
+                    } else {
+                        // Log JSON objects that aren't specifically handled
+                        console.log(`[Python JSON]`, msg);
                     }
-                } catch { }
+                } catch {
+                    // This is a standard print statement or non-JSON output
+                    console.log(`[Python] ${trimmed}`);
+                }
             }
         });
 
         this.pythonProcess.stderr.on('data', (d) => {
-            const msg = d.toString();
+            const msg = d.toString().trim();
+            if (!msg) return;
+
             if (msg.includes('%')) {
                 const match = msg.match(/(\d+)%/);
                 if (match) {
                     this.emit('download-progress', { percent: Number(match[1]) });
+                    return;
                 }
             }
+
+            // Log any other stderr output
+            console.warn(`[Python STDERR] ${msg}`);
         });
     }
 

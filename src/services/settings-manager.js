@@ -229,9 +229,19 @@ class SettingsManager {
         const directives = [];
         const negativeDirectives = [];
 
+        // Apply global defaults if profile is empty or missing values
+        const config = {
+            responseStyle: profile.responseStyle || 'short',
+            initiativeLevel: profile.initiativeLevel || 'minimal',
+            admitIgnorance: profile.admitIgnorance !== undefined ? profile.admitIgnorance : true,
+            askClarification: profile.askClarification !== undefined ? profile.askClarification : true,
+            avoidGeneric: profile.avoidGeneric !== undefined ? profile.avoidGeneric : true,
+            negativeRules: profile.negativeRules || ''
+        };
+
         // 1. GATHER NEGATIVE RULES (MANDATORY CONSTRAINTS)
-        if (profile.negativeRules && profile.negativeRules.trim()) {
-            const rules = profile.negativeRules.split('\n').filter(r => r.trim()).map(r => `- ${r.trim().toUpperCase()}`);
+        if (config.negativeRules && config.negativeRules.trim()) {
+            const rules = config.negativeRules.split('\n').filter(r => r.trim()).map(r => `- ${r.trim().toUpperCase()}`);
             if (rules.length > 0) {
                 negativeDirectives.push('\n[CRITICAL CONSTRAINTS - NEVER DO THESE]:\n' + rules.join('\n'));
             }
@@ -244,8 +254,8 @@ class SettingsManager {
             strategic: 'Dê a resposta principal + INSIGHT ESTRATÉGICO.',
             code: 'CÓDIGO PRIMEIRO. Explicação mínima depois.'
         };
-        if (profile.responseStyle && styleMap[profile.responseStyle]) {
-            directives.push(styleMap[profile.responseStyle]);
+        if (config.responseStyle && styleMap[config.responseStyle]) {
+            directives.push(styleMap[config.responseStyle]);
         }
 
         // Initiative level
@@ -254,14 +264,14 @@ class SettingsManager {
             brief: 'Complemente brevemente se necessário.',
             proactive: 'Sugira melhorias e antecipe dúvidas.'
         };
-        if (profile.initiativeLevel && initiativeMap[profile.initiativeLevel]) {
-            directives.push(initiativeMap[profile.initiativeLevel]);
+        if (config.initiativeLevel && initiativeMap[config.initiativeLevel]) {
+            directives.push(initiativeMap[config.initiativeLevel]);
         }
 
         // Hallucination preventers
-        if (profile.admitIgnorance) directives.push('Se não souber, ADMITA. Jamais invente fatos.');
-        if (profile.askClarification) directives.push('Se a pergunta for vaga, PEÇA ESCLARECIMENTO.');
-        if (profile.avoidGeneric) directives.push('EVITE clichês e respostas genéricas.');
+        if (config.admitIgnorance) directives.push('Se não souber, ADMITA. Jamais invente fatos.');
+        if (config.askClarification) directives.push('Se a pergunta for vaga, PEÇA ESCLARECIMENTO.');
+        if (config.avoidGeneric) directives.push('EVITE clichês e respostas genéricas.');
 
         let finalPrompt = '';
         if (negativeDirectives.length > 0) {
@@ -279,7 +289,20 @@ class SettingsManager {
      */
     loadProfile(name) {
         const profiles = this.store.get('profiles', {});
-        return profiles[name] || null;
+        if (profiles[name]) return profiles[name];
+
+        // Fallback for builtin modes
+        const builtinModes = ['rh', 'technical', 'leadership', 'english', 'startup'];
+        if (builtinModes.includes(name)) {
+            return {
+                id: name,
+                name: name.toUpperCase(),
+                systemPrompt: this.getDefaultPrompt(name),
+                isBuiltin: true
+            };
+        }
+
+        return null;
     }
 
     /**

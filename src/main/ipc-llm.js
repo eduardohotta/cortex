@@ -38,117 +38,165 @@ function registerLLMHandlers(services) {
     /* ===========================
        LLM – STREAMING ASK
     ============================ */
-    ipcMain.handle('llm:process-ask', async (_, { text, historyOverride }) => {
-        if (isGenerating) return '';
+    // Cole e use como está (assume que estes já existem no seu contexto):
+    // ipcMain, llmConnector, settingsManager, contextManager, appState,
+    // broadcastToWindows, broadcastState, isGenerating (global/outer scope)
 
+    ipcMain.handle('llm:process-ask', async (_, { text, historyOverride } = {}) => {
+        if (isGenerating) return null;
         isGenerating = true;
 
-        return new Promise(async (resolve, reject) => {
-            let fullResponse = '';
-            let queryText = '';
+        let fullResponse = '';
+        let queryText = '';
 
-            const cleanup = () => {
-                llmConnector.off('complete', onComplete);
-                llmConnector.off('error', onError);
-                llmConnector.off('aborted', onAbort);
-                isGenerating = false;
-            };
+        const localTracker = (chunk) => {
+            fullResponse += chunk ?? '';
+        };
 
-            const onAbort = () => {
-                console.log('[IPC-LLM] Generation aborted event received');
-                broadcastToWindows('llm:response-end');
-                cleanup();
-                resolve(null);
-            };
+        // Mantém referências estáveis para remover listeners com segurança
+        let onComplete;
+        let onError;
+        let onAbort;
 
-            const onComplete = () => {
-                broadcastToWindows('llm:response-end');
+        const cleanup = () => {
+            llmConnector.off('chunk', localTracker);
+            if (onComplete) llmConnector.off('complete', onComplete);
+            if (onError) llmConnector.off('error', onError);
+            if (onAbort) llmConnector.off('aborted', onAbort);
+            isGenerating = false;
+        };
 
-                if (fullResponse.length > 5) {
-                    contextManager.recordTurn(queryText, fullResponse);
-                    appState.transcriptBuffer = '';
-                    appState.tokenCount = 0;
-                    broadcastState();
-                }
-
-                cleanup();
-                resolve(fullResponse);
-            };
-
-            const onError = (err) => {
-                broadcastToWindows('llm:error', err.message);
-                cleanup();
-                reject(err);
-            };
-
-            try {
-                const provider = settingsManager.get('llmProvider');
-                const model = provider === 'local'
+        try {
+            const provider = settingsManager.get('llmProvider');
+            const model =
+                provider === 'local'
                     ? settingsManager.get('localModel')
                     : settingsManager.get('llmModel');
 
-                llmConnector.configure({
-                    provider,
-                    model,
-                    apiKeys: settingsManager.get('apiKeys', provider),
-                    temperature: settingsManager.get('temperature') ?? 0.3,
-                    topP: settingsManager.get('topP') ?? 0.9,
-                    maxTokens: settingsManager.get('maxTokens') ?? 512,
-                    topK: settingsManager.get('localTopK') ?? 40,
-                    repeatPenalty: settingsManager.get('localRepetitionPenalty') ?? 1.15,
-                    threads: settingsManager.get('localThreads') ?? 4,
-                    gpuLayers: settingsManager.get('localGpuLayers') ?? 0,
-                    batchSize: settingsManager.get('localBatchSize') ?? 512
-                });
+            llmConnector.configure({
+                provider,
+                model,
+                apiKeys: settingsManager.get('apiKeys', provider),
+                temperature: settingsManager.get('temperature') ?? 0.3,
+                topP: settingsManager.get('topP') ?? 0.9,
+                maxTokens: settingsManager.get('maxTokens') ?? 512,
+                topK: settingsManager.get('localTopK') ?? 40,
+                repeatPenalty: settingsManager.get('localRepetitionPenalty') ?? 1.15,
+                threads: settingsManager.get('localThreads') ?? 4,
+                gpuLayers: settingsManager.get('localGpuLayers') ?? 0,
+                batchSize: settingsManager.get('localBatchSize') ?? 512
+            });
 
-                const profile = settingsManager.loadProfile(
-                    settingsManager.get('currentAssistantId') || 'default'
-                ) || {};
+            const assistantId = settingsManager.get('currentAssistantId') || 'default';
+            const profile = settingsManager.loadProfile(assistantId) || {};
 
-                let systemPrompt = [
-                    profile.systemPrompt,
-                    profile.assistantInstructions,
-                    profile.additionalContext
-                ].filter(Boolean).join('\n\n');
+            const mainPrompt = profile.systemPrompt || settingsManager.get('systemPrompt');
 
-                systemPrompt += settingsManager.buildBehaviorPrompt(profile);
+            let systemPrompt = [
+                mainPrompt,
+                profile.assistantInstructions || '',
+                profile.additionalContext || ''
+            ]
+                .filter(Boolean)
+                .join('\n\n');
 
-                const history = historyOverride || contextManager.getRecentHistory(3);
-                queryText = text || appState.transcriptBuffer;
+            systemPrompt += settingsManager.buildBehaviorPrompt(profile);
 
-                if (!queryText?.trim()) {
-                    cleanup();
-                    return reject(new Error('Sem texto para perguntar.'));
-                }
+            const history = historyOverride ?? contextManager.getRecentHistory(3);
 
-                if (history?.length) {
-                    systemPrompt += '\n\n## Contexto anterior:\n' +
-                        history.map(h => `Human: ${h.question}\nAI: ${h.answer}`).join('\n\n');
-                }
+            queryText = (text ?? appState.transcriptBuffer ?? '').trim();
+            if (!queryText) throw new Error('Sem texto para perguntar.');
 
-                broadcastToWindows('llm:response-start');
+            if (history?.length) {
+                systemPrompt +=
+                    '\n\n## Contexto anterior:\n' +
+                    history
+                        .map((h) => `Human: ${h.question}\nAI: ${h.answer}`)
+                        .join('\n\n');
+            }
 
-                // Internal tracker for history recording
-                const localTracker = (c) => fullResponse += c;
+            // DEBUG: Show everything being sent to the AI
+            console.log('\n' + '='.repeat(50));
+            console.log('🤖 [AI REQUEST INSPECTOR]');
+            console.log('='.repeat(50));
+            console.log('📍 PROFILE ID:', settingsManager.get('currentAssistantId') || 'default');
+            console.log(
+                '📍 PROFILE TYPE:',
+                profile.isBuiltin ? 'BUILTIN DEFAULT' : (profile.id ? 'CUSTOM' : 'EMPTY FALLBACK')
+            );
+            console.log('📍 PROFILE DATA:', JSON.stringify(profile, null, 2));
+            console.log('📍 PROVIDER:', provider);
+            console.log('📍 MODEL:', model);
+            console.log('📍 TEMPERATURE:', settingsManager.get('temperature') ?? 0.3);
+            console.log('\n--- [SYSTEM PROMPT] ---\n');
+            console.log(systemPrompt);
+            console.log('\n--- [USER QUERY] ---\n');
+            console.log(queryText);
+            console.log('='.repeat(50) + '\n');
+
+            broadcastToWindows('llm:response-start');
+
+            // Aguarda finalização por eventos (complete/error/aborted)
+            const response = await new Promise((resolve, reject) => {
+                let settled = false;
+                const settleOnce = (fn) => (value) => {
+                    if (settled) return;
+                    settled = true;
+                    fn(value);
+                };
+
+                const safeResolve = settleOnce(resolve);
+                const safeReject = settleOnce(reject);
+
+                onAbort = () => {
+                    console.log('[IPC-LLM] Generation aborted event received');
+                    broadcastToWindows('llm:response-end');
+                    safeResolve(null);
+                };
+
+                onComplete = () => {
+                    broadcastToWindows('llm:response-end');
+
+                    if (fullResponse.length > 5) {
+                        contextManager.recordTurn(queryText, fullResponse);
+                        appState.transcriptBuffer = '';
+                        appState.tokenCount = 0;
+                        broadcastState();
+                    }
+
+                    safeResolve(fullResponse);
+                };
+
+                onError = (err) => {
+                    broadcastToWindows('llm:error', err?.message || String(err));
+                    safeReject(err);
+                };
+
                 llmConnector.on('chunk', localTracker);
 
-                llmConnector.once('complete', () => llmConnector.off('chunk', localTracker));
-                llmConnector.on('complete', onComplete);
-                llmConnector.on('error', onError);
-                llmConnector.on('aborted', onAbort);
+                // once evita múltiplos disparos acumulando
+                llmConnector.once('aborted', onAbort);
+                llmConnector.once('complete', onComplete);
+                llmConnector.once('error', onError);
 
-                const result = await llmConnector.generate(queryText, systemPrompt);
+                // Inicia geração
+                // Se generate retornar string sem emitir eventos, resolvemos por fallback
+                Promise.resolve(llmConnector.generate(queryText, systemPrompt))
+                    .then((result) => {
+                        if (typeof result === 'string' && !fullResponse) {
+                            fullResponse = result;
+                            onComplete();
+                        }
+                    })
+                    .catch((e) => onError(e));
+            });
 
-                if (typeof result === 'string' && !fullResponse) {
-                    fullResponse = result;
-                    onComplete();
-                }
-
-            } catch (e) {
-                onError(e);
-            }
-        });
+            return response;
+        } finally {
+            cleanup();
+        }
     });
+
 
     /* ===========================
        LLM – STOP
@@ -169,7 +217,6 @@ function registerLLMHandlers(services) {
        LLM – QUICK GENERATE
     ============================ */
     ipcMain.handle('llm:generate', async (_, prompt, systemPromptOverride) => {
-        // Broadscast response-start for word analysis too if we want streaming indicator
         broadcastToWindows('llm:response-start');
 
         if (systemPromptOverride) {
@@ -179,14 +226,19 @@ function registerLLMHandlers(services) {
         }
 
         try {
-            const profile = settingsManager.loadProfile(
-                settingsManager.get('currentAssistantId') || 'default'
-            ) || {};
+            const assistantId = settingsManager.get('currentAssistantId') || 'default';
+            const profile = settingsManager.loadProfile(assistantId) || {};
+
+            // Priority for Main Prompt:
+            // 1. Profile custom prompt
+            // 2. Builtin default for that mode (via loadProfile virtual data)
+            // 3. Global default systemPrompt (only as absolute fallback)
+            const mainPrompt = profile.systemPrompt || settingsManager.get('systemPrompt');
 
             let sysPrompt = [
-                profile.systemPrompt,
-                profile.assistantInstructions,
-                profile.additionalContext
+                mainPrompt,
+                profile.assistantInstructions || '',
+                profile.additionalContext || ''
             ].filter(Boolean).join('\n\n');
 
             sysPrompt += settingsManager.buildBehaviorPrompt(profile);
@@ -196,13 +248,29 @@ function registerLLMHandlers(services) {
             } else {
                 sysPrompt += '\n\nResponda agora ao termo solicitado de forma concisa e técnica seguindo as orientações acima.';
             }
-            console.log('Generating definition for:', prompt);
 
-            const result = await llmConnector.generateDefinition(prompt, sysPrompt);
+            // Include short history for context-aware definitions
+            const history = contextManager.getRecentHistory(3);
+            let finalPrompt = prompt;
+            if (history?.length) {
+                finalPrompt = `Contexto da conversa:\n` +
+                    history.map(h => `- ${h.question}`).join('\n') +
+                    `\n\nAgora, ${prompt}`;
+            }
+
+            // 🔍 DEBUG: Secondary Request
+            console.log('\n' + '-'.repeat(30));
+            console.log('📖 [SECONDARY AI REQUEST]');
+            console.log('📍 PROFILE:', assistantId);
+            console.log('--- [SYSTEM PROMPT] ---\n', sysPrompt);
+            console.log('--- [FINAL PROMPT] ---\n', finalPrompt);
+            console.log('-'.repeat(30) + '\n');
+
+            const result = await llmConnector.generateDefinition(finalPrompt, sysPrompt);
             broadcastToWindows('llm:response-end');
             return result;
         } catch (e) {
-            console.error('[IPC-LLM] Failed to load profile for generate:', e);
+            console.error('[IPC-LLM] Failed to perform secondary generate:', e);
             const result = await llmConnector.generateDefinition(prompt, 'Você é um dicionário técnico conciso.');
             broadcastToWindows('llm:response-end');
             return result;
