@@ -1,32 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { AppProvider, useApp } from '../contexts/AppContext';
 import TranscriptionView from './TranscriptionView';
 import ResponseView from './ResponseView';
 import FloatingRemote from '../components/FloatingRemote';
-import { Settings, Minus, X } from 'lucide-react';
+import { Settings, Minus } from 'lucide-react';
 import clsx from 'clsx';
 
-/**
- * WindowWrapper
- * - Header draggable (Electron)
- * - Conteúdo responsivo
- */
 function WindowWrapper({ title, children, transparent = true, viewType }) {
     const [opacity, setOpacity] = useState(90);
     const [showOpacitySlider, setShowOpacitySlider] = useState(false);
+    const sliderRef = useRef(null);
 
     useEffect(() => {
-        if (window.electronAPI) {
-            window.electronAPI.settings.get('overlayOpacity').then(val => {
-                if (val) setOpacity(val);
-            });
-        }
+        if (!window.electronAPI) return;
+
+        window.electronAPI.settings.get('overlayOpacity').then(val => {
+            if (val != null) setOpacity(Number(val));
+        });
+
+        const unsub = window.electronAPI.settings.onSettingsChanged(({ key, value }) => {
+            if (key === 'overlayOpacity' && value != null) setOpacity(Number(value));
+        });
+
+        return () => unsub && unsub();
     }, []);
 
+    useEffect(() => {
+        const onDocDown = (e) => {
+            if (!showOpacitySlider) return;
+            if (!sliderRef.current) return;
+            if (sliderRef.current.contains(e.target)) return;
+            setShowOpacitySlider(false);
+        };
+
+        document.addEventListener('pointerdown', onDocDown);
+        return () => document.removeEventListener('pointerdown', onDocDown);
+    }, [showOpacitySlider]);
+
     const handleOpacityChange = async (val) => {
-        setOpacity(val);
+        const clamped = Math.max(20, Math.min(100, Number(val)));
+        setOpacity(clamped);
         if (window.electronAPI) {
-            await window.electronAPI.settings.set('overlayOpacity', val);
+            await window.electronAPI.settings.set('overlayOpacity', clamped);
         }
     };
 
@@ -46,7 +61,6 @@ function WindowWrapper({ title, children, transparent = true, viewType }) {
             )}
             style={{ opacity: opacity / 100 }}
         >
-            {/* Drag Header */}
             <header
                 className="h-11 flex-none flex items-center justify-between px-4 border-b border-white/10 text-white select-none"
                 style={{ WebkitAppRegion: 'drag' }}
@@ -55,19 +69,16 @@ function WindowWrapper({ title, children, transparent = true, viewType }) {
                     {title}
                 </span>
 
-                <div
-                    className="flex items-center gap-1"
-                    style={{ WebkitAppRegion: 'no-drag' }}
-                >
-                    {/* Opacity Control */}
-                    <div className="relative flex items-center">
+                <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
+                    <div ref={sliderRef} className="relative flex items-center">
                         <button
-                            onClick={() => setShowOpacitySlider(!showOpacitySlider)}
+                            onClick={() => setShowOpacitySlider(v => !v)}
                             className={clsx(
                                 "p-2 rounded-lg transition-all",
                                 showOpacitySlider ? "text-white bg-white/10" : "text-gray-500 hover:text-white hover:bg-white/5"
                             )}
                             title="Opacidade"
+                            type="button"
                         >
                             <span className="text-[10px] font-mono leading-none">{opacity}%</span>
                         </button>
@@ -79,28 +90,28 @@ function WindowWrapper({ title, children, transparent = true, viewType }) {
                                     min="20"
                                     max="100"
                                     value={opacity}
-                                    onChange={(e) => handleOpacityChange(parseInt(e.target.value))}
+                                    onChange={(e) => handleOpacityChange(parseInt(e.target.value, 10))}
                                     className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                 />
                             </div>
                         )}
                     </div>
 
-                    {/* Settings Button */}
                     <button
                         onClick={handleOpenSettings}
                         className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all"
                         title="Configurações"
+                        type="button"
                     >
                         <Settings size={14} />
                     </button>
 
-                    {/* Minimize Button - Hidden for remote as per user request */}
                     {viewType !== 'remote' && (
                         <button
                             onClick={handleMinimize}
                             className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
                             title="Fechar"
+                            type="button"
                         >
                             <Minus size={14} />
                         </button>
@@ -108,60 +119,50 @@ function WindowWrapper({ title, children, transparent = true, viewType }) {
                 </div>
             </header>
 
-            {/* Content */}
-            <main
-                className="flex-1 min-h-0 overflow-hidden"
-                style={{ WebkitAppRegion: 'no-drag' }}
-            >
+            <main className="flex-1 min-h-0 overflow-hidden" style={{ WebkitAppRegion: 'no-drag' }}>
                 {children}
             </main>
         </div>
     );
 }
 
-/**
- * OverlayContent
- * Resolve view de forma segura
- */
 function OverlayContent() {
-    const { state } = useApp(); // pronto para reagir a panic / agent / etc
     const [view, setView] = useState(null);
+
+    const resolveView = useCallback(async () => {
+        if (window.electronAPI?.getOverlayView) {
+            const v = await window.electronAPI.getOverlayView();
+            if (v) {
+                setView(v);
+                return;
+            }
+        }
+
+        const hash = window.location.hash.replace('#', '');
+        if (hash) {
+            setView(hash);
+            return;
+        }
+
+        setView('remote');
+    }, []);
 
     useEffect(() => {
         let mounted = true;
 
-        async function resolveView() {
-            // 1. Electron preload (FONTE PRIMÁRIA - via additionalArguments)
-            if (window.electronAPI?.getOverlayView) {
-                const v = await window.electronAPI.getOverlayView();
-                console.log('[Overlay] View from Electron:', v);
-                if (v && mounted) {
-                    setView(v);
-                    return;
-                }
-            }
+        const run = async () => {
+            if (!mounted) return;
+            await resolveView();
+        };
 
-            // 2. URL hash (dev / debug fallback)
-            const hash = window.location.hash.replace('#', '');
-            console.log('[Overlay] View from hash:', hash);
-            if (hash) {
-                setView(hash);
-                return;
-            }
-
-            // 3. fallback final
-            console.log('[Overlay] Using fallback: remote');
-            setView('remote');
-        }
-
-        resolveView();
-        window.addEventListener('hashchange', resolveView);
+        run();
+        window.addEventListener('hashchange', run);
 
         return () => {
             mounted = false;
-            window.removeEventListener('hashchange', resolveView);
+            window.removeEventListener('hashchange', run);
         };
-    }, []);
+    }, [resolveView]);
 
     if (!view) {
         return (
@@ -171,7 +172,6 @@ function OverlayContent() {
         );
     }
 
-    // ===== REMOTE (barra flutuante) =====
     if (view === 'remote') {
         return (
             <div className="h-full w-full flex items-end justify-center bg-transparent pb-1">
@@ -179,12 +179,9 @@ function OverlayContent() {
                     <FloatingRemote standalone />
                 </div>
             </div>
-
         );
     }
 
-
-    // ===== TRANSCRIPTION =====
     if (view === 'transcription') {
         return (
             <WindowWrapper title="Transcrição de Voz" viewType="transcription">
@@ -193,7 +190,6 @@ function OverlayContent() {
         );
     }
 
-    // ===== RESPONSE =====
     if (view === 'response') {
         return (
             <WindowWrapper title="Resposta da IA" viewType="response">
@@ -202,7 +198,6 @@ function OverlayContent() {
         );
     }
 
-    // ===== ERROR =====
     return (
         <div className="h-full w-full flex items-center justify-center text-red-500 text-sm font-bold">
             VIEW "{view}" NOT FOUND
@@ -210,9 +205,6 @@ function OverlayContent() {
     );
 }
 
-/**
- * OverlayApp
- */
 export default function OverlayApp() {
     return (
         <AppProvider>

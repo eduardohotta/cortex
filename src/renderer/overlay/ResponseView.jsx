@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Copy, Check, Loader2, Sparkles, AlertCircle, CheckCircle, Square, BookOpen } from 'lucide-react';
+import { Loader2, Sparkles, AlertCircle, CheckCircle, Square, BookOpen, Trash2 } from 'lucide-react';
 import { MessageItem } from './components/MessageItem';
 import clsx from 'clsx';
 import './markdown.css';
@@ -10,7 +10,6 @@ export default function ResponseView() {
     const [status, setStatus] = useState('idle');
     const [error, setError] = useState(null);
     const [timer, setTimer] = useState(0);
-    const [copied, setCopied] = useState(false);
     const [hotkeyExplain, setHotkeyExplain] = useState('ctrl');
     const [config, setConfig] = useState({});
 
@@ -26,11 +25,19 @@ export default function ResponseView() {
     const nextTitleRef = useRef(null);
 
     const scrollContainerRef = useRef(null);
-    const bottomRef = useRef(null);
     const isUserScrollingRef = useRef(false);
 
     const rafFlushRef = useRef(null);
-    const copyTimeoutRef = useRef(null);
+
+    const isPointerDownRef = useRef(false);
+    const pauseRenderRef = useRef(false);
+
+    const activeMessageIdRef = useRef(null);
+
+    const lastStartAtRef = useRef(0);
+    const lastEndAtRef = useRef(0);
+    const lastChunkAtRef = useRef(0);
+    const lastChunkValueRef = useRef('');
 
     useEffect(() => { configRef.current = config; }, [config]);
     useEffect(() => { assistantNameRef.current = currentAssistantName; }, [currentAssistantName]);
@@ -41,7 +48,9 @@ export default function ResponseView() {
     };
 
     const scheduleFlushHistory = useCallback(() => {
+        if (pauseRenderRef.current) return;
         if (rafFlushRef.current) return;
+
         rafFlushRef.current = requestAnimationFrame(() => {
             rafFlushRef.current = null;
             setHistory([...historyRef.current]);
@@ -52,15 +61,94 @@ export default function ResponseView() {
         const el = scrollContainerRef.current;
         if (!el) return;
         const { scrollTop, scrollHeight, clientHeight } = el;
-        const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+        const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) <= 2;
         isUserScrollingRef.current = !isAtBottom;
     }, []);
 
     const smartAutoScroll = useCallback(() => {
-        if (!isUserScrollingRef.current && bottomRef.current) {
-            bottomRef.current.scrollIntoView({ behavior: 'auto' });
-        }
+        if (isPointerDownRef.current) return;
+        if (isUserScrollingRef.current) return;
+
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        el.scrollTop = el.scrollHeight;
     }, []);
+
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+
+        const releasePointerMode = () => {
+            isPointerDownRef.current = false;
+            pauseRenderRef.current = false;
+            requestAnimationFrame(() => {
+                handleScroll();
+                scheduleFlushHistory();
+            });
+        };
+
+        const onPointerDown = () => {
+            isPointerDownRef.current = true;
+            pauseRenderRef.current = true;
+            isUserScrollingRef.current = true;
+        };
+
+        el.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointerup', releasePointerMode);
+        window.addEventListener('pointercancel', releasePointerMode);
+        window.addEventListener('blur', releasePointerMode);
+
+        return () => {
+            el.removeEventListener('pointerdown', onPointerDown);
+            window.removeEventListener('pointerup', releasePointerMode);
+            window.removeEventListener('pointercancel', releasePointerMode);
+            window.removeEventListener('blur', releasePointerMode);
+        };
+    }, [handleScroll, scheduleFlushHistory]);
+
+    const createNewEntry = useCallback((title) => {
+        const newEntry = {
+            id: makeId(),
+            title,
+            text: '',
+            timestamp: Date.now(),
+            isStreaming: true
+        };
+
+        historyRef.current = [...historyRef.current, newEntry];
+        activeMessageIdRef.current = newEntry.id;
+        scheduleFlushHistory();
+
+        return newEntry;
+    }, [scheduleFlushHistory]);
+
+    const ensureActiveEntry = useCallback(() => {
+        const cur = historyRef.current;
+        const activeId = activeMessageIdRef.current;
+
+        if (activeId && cur.some(m => m.id === activeId)) return activeId;
+
+        const cfg = configRef.current || {};
+        const assistantName = assistantNameRef.current;
+
+        const titleOverride = nextTitleRef.current;
+        nextTitleRef.current = null;
+
+        const title = titleOverride || assistantName || cfg.mainResponseTitle || 'Insight';
+        const entry = createNewEntry(title);
+        return entry.id;
+    }, [createNewEntry]);
+
+    const updateActiveEntry = useCallback((patchFn) => {
+        const cur = historyRef.current.slice();
+        const activeId = ensureActiveEntry();
+        const idx = cur.findIndex(m => m.id === activeId);
+        if (idx === -1) return;
+
+        cur[idx] = patchFn(cur[idx]);
+        historyRef.current = cur;
+        scheduleFlushHistory();
+    }, [ensureActiveEntry, scheduleFlushHistory]);
 
     useEffect(() => {
         if (!window.electronAPI) return;
@@ -81,7 +169,31 @@ export default function ResponseView() {
     useEffect(() => {
         if (!window.electronAPI) return;
 
+        const isDuplicateStart = () => {
+            const now = Date.now();
+            if (now - lastStartAtRef.current < 60) return true;
+            lastStartAtRef.current = now;
+            return false;
+        };
+
+        const isDuplicateEnd = () => {
+            const now = Date.now();
+            if (now - lastEndAtRef.current < 60) return true;
+            lastEndAtRef.current = now;
+            return false;
+        };
+
+        const isDuplicateChunk = (chunk) => {
+            const now = Date.now();
+            if (chunk === lastChunkValueRef.current && now - lastChunkAtRef.current < 15) return true;
+            lastChunkValueRef.current = chunk;
+            lastChunkAtRef.current = now;
+            return false;
+        };
+
         const unsubStart = window.electronAPI.llm.onResponseStart(() => {
+            if (isDuplicateStart()) return;
+
             const cfg = configRef.current || {};
             const assistantName = assistantNameRef.current;
 
@@ -89,77 +201,72 @@ export default function ResponseView() {
             nextTitleRef.current = null;
 
             const title = titleOverride || assistantName || cfg.mainResponseTitle || 'Insight';
-
-            const newEntry = {
-                id: makeId(),
-                title,
-                text: '',
-                timestamp: Date.now(),
-                isStreaming: true
-            };
-
-            historyRef.current = [...historyRef.current, newEntry];
-            scheduleFlushHistory();
+            createNewEntry(title);
 
             setStatus('processing');
             setError(null);
-            isUserScrollingRef.current = false;
+
+            if (!isPointerDownRef.current) {
+                isUserScrollingRef.current = false;
+            }
+
             requestAnimationFrame(smartAutoScroll);
         });
 
         const unsubChunk = window.electronAPI.llm.onResponseChunk((chunk) => {
             if (!chunk) return;
-            const cur = historyRef.current;
-            if (!cur.length) return;
+            if (isDuplicateChunk(chunk)) return;
 
-            const lastIndex = cur.length - 1;
-            const last = cur[lastIndex];
-            const updated = {
-                ...last,
-                text: (last.text || '') + chunk,
+            updateActiveEntry((msg) => ({
+                ...msg,
+                text: (msg.text || '') + chunk,
                 isStreaming: true
-            };
-
-            const next = cur.slice();
-            next[lastIndex] = updated;
-
-            historyRef.current = next;
-            scheduleFlushHistory();
+            }));
 
             setStatus('streaming');
             requestAnimationFrame(smartAutoScroll);
         });
 
         const unsubEnd = window.electronAPI.llm.onResponseEnd(() => {
+            if (isDuplicateEnd()) return;
+
+            const cfg = configRef.current || {};
             const cur = historyRef.current.slice();
-            if (cur.length) {
-                const lastIndex = cur.length - 1;
-                const last = cur[lastIndex];
+            const activeId = activeMessageIdRef.current;
 
-                if (!last.text || !last.text.trim()) {
-                    cur.pop();
-                } else {
-                    cur[lastIndex] = { ...last, isStreaming: false };
+            if (activeId) {
+                const idx = cur.findIndex(m => m.id === activeId);
+                if (idx !== -1) {
+                    const last = cur[idx];
+                    const text = (last.text || '').trim();
+
+                    cur[idx] = {
+                        ...last,
+                        text: text ? last.text : (cfg.labelEmptyResponse || '(sem resposta)'),
+                        isStreaming: false
+                    };
                 }
-
-                historyRef.current = cur;
-                scheduleFlushHistory();
             }
 
+            historyRef.current = cur;
+            activeMessageIdRef.current = null;
+            scheduleFlushHistory();
+
             setStatus('complete');
+            requestAnimationFrame(smartAutoScroll);
         });
 
         const unsubError = window.electronAPI.llm.onError((msg) => {
             setError(msg || 'Erro');
             setStatus('error');
 
-            const cur = historyRef.current.slice();
-            if (cur.length) {
-                const lastIndex = cur.length - 1;
-                cur[lastIndex] = { ...cur[lastIndex], isStreaming: false };
-                historyRef.current = cur;
-                scheduleFlushHistory();
-            }
+            updateActiveEntry((m) => ({
+                ...m,
+                text: (m.text || '').trim() ? m.text : ((configRef.current?.labelError) || 'Erro'),
+                isStreaming: false
+            }));
+
+            activeMessageIdRef.current = null;
         });
 
         return () => {
@@ -170,17 +277,11 @@ export default function ResponseView() {
             if (rafFlushRef.current) cancelAnimationFrame(rafFlushRef.current);
             rafFlushRef.current = null;
         };
-    }, [scheduleFlushHistory, smartAutoScroll]);
+    }, [createNewEntry, updateActiveEntry, scheduleFlushHistory, smartAutoScroll]);
 
     useEffect(() => {
         const interval = setInterval(() => setTimer(t => t + 1), 1000);
         return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-        };
     }, []);
 
     const formatTime = (s) => {
@@ -198,25 +299,20 @@ export default function ResponseView() {
         window.electronAPI?.llm?.stopGeneration();
     };
 
-    const handleCopy = async () => {
-        const cur = historyRef.current;
-        if (!cur.length) return;
-
-        const lastText = cur[cur.length - 1]?.text || '';
-        if (!lastText.trim()) return;
-
-        try {
-            await navigator.clipboard.writeText(lastText);
-            setCopied(true);
-            if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-            copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-        } catch (e) {
-            console.error('Copy failed:', e);
-        }
+    const handleClean = () => {
+        historyRef.current = [];
+        activeMessageIdRef.current = null;
+        lastChunkValueRef.current = '';
+        lastChunkAtRef.current = 0;
+        setHistory([]);
+        setError(null);
+        setStatus('idle');
     };
 
     const handleWordClick = useCallback(async (phrase, e, isPhrase) => {
         const cfg = configRef.current || {};
+
+        if (status === 'processing' || status === 'streaming') return;
 
         const titlePrefix = isPhrase
             ? (cfg.phraseAnalysisTitle || 'Análise')
@@ -232,7 +328,10 @@ export default function ResponseView() {
 
         setStatus('processing');
         setError(null);
-        isUserScrollingRef.current = false;
+
+        if (!isPointerDownRef.current) {
+            isUserScrollingRef.current = false;
+        }
 
         try {
             await window.electronAPI.llm.generate(prompt);
@@ -240,8 +339,9 @@ export default function ResponseView() {
             console.error('Secondary generate failed:', err);
             setError(cfg.labelError || 'Erro');
             setStatus('error');
+            activeMessageIdRef.current = null;
         }
-    }, []);
+    }, [status]);
 
     const StatusBadge = useMemo(() => {
         const statusConfig = {
@@ -341,22 +441,20 @@ export default function ResponseView() {
                         />
                     ))}
                 </div>
-                <div ref={bottomRef} className="h-2" />
+
+                <div className="h-2" />
             </div>
 
             {history.length > 0 && (
                 <div className="flex-shrink-0 p-3 border-t border-white/10 bg-black/40 flex justify-end">
                     <button
-                        onClick={handleCopy}
+                        onClick={handleClean}
                         className={clsx(
                             "flex items-center gap-1.5 px-3 py-1.5 border text-[9px] font-black uppercase rounded-md transition-all",
-                            copied
-                                ? "bg-green-500/20 border-green-500/30 text-green-400"
-                                : "bg-white/5 border-white/10 text-white hover:bg-white/10"
+                            "bg-white/5 border-white/10 text-white hover:bg-white/10"
                         )}
                     >
-                        {copied ? <Check size={12} /> : <Copy size={12} />}
-                        {copied ? (config.labelCopied || 'Copiado!') : (config.labelCopy || 'Copiar Último')}
+                        <Trash2 size={12} /> {config.labelClean || 'Clean'}
                     </button>
                 </div>
             )}

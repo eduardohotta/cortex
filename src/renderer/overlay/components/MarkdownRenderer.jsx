@@ -1,112 +1,218 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import clsx from 'clsx';
 
-/**
- * Enhanced Markdown Component that renders text with interactive word spans.
- * Strips markdown symbols while applying visual styles.
- */
 export const MarkdownRenderer = ({ text, selection, handleMouseEnter, handleClick }) => {
-    if (!text) return null;
+    const parsed = useMemo(() => {
+        if (!text) return [];
+
+        const lines = text.split('\n');
+
+        const out = [];
+        let inCodeBlock = false;
+        let codeBuffer = [];
+
+        const pushCodeBlock = (keyBase) => {
+            const codeText = codeBuffer.join('\n');
+            out.push({
+                type: 'codeblock',
+                key: `${keyBase}-codeblock-${out.length}`,
+                code: codeText
+            });
+            codeBuffer = [];
+        };
+
+        const parseInline = (s) => {
+            const re = /(`[^`]+`|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)/g;
+            const parts = [];
+            let lastIndex = 0;
+
+            for (const match of s.matchAll(re)) {
+                const idx = match.index ?? 0;
+                if (idx > lastIndex) parts.push({ t: 'text', v: s.slice(lastIndex, idx) });
+
+                const token = match;
+                if (token.startsWith('`') && token.endsWith('`')) parts.push({ t: 'code', v: token.slice(1, -1) });
+                else if (token.startsWith('**') && token.endsWith('**')) parts.push({ t: 'strong', v: token.slice(2, -2) });
+                else if (token.startsWith('__') && token.endsWith('__')) parts.push({ t: 'strong', v: token.slice(2, -2) });
+                else if (token.startsWith('*') && token.endsWith('*')) parts.push({ t: 'em', v: token.slice(1, -1) });
+                else if (token.startsWith('_') && token.endsWith('_')) parts.push({ t: 'em', v: token.slice(1, -1) });
+                else parts.push({ t: 'text', v: token });
+
+                lastIndex = idx + token.length;
+            }
+
+            if (lastIndex < s.length) parts.push({ t: 'text', v: s.slice(lastIndex) });
+            return parts;
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const raw = lines[i];
+
+            const trimmed = raw.trim();
+            const fence = trimmed.startsWith('```');
+            if (fence) {
+                if (inCodeBlock) {
+                    pushCodeBlock(i);
+                    inCodeBlock = false;
+                } else {
+                    inCodeBlock = true;
+                    codeBuffer = [];
+                }
+                continue;
+            }
+
+            if (inCodeBlock) {
+                codeBuffer.push(raw);
+                continue;
+            }
+
+            if (trimmed === '---' || trimmed === '***') {
+                out.push({ type: 'hr', key: `hr-${i}` });
+                continue;
+            }
+
+            let content = raw;
+            let isBlockquote = false;
+            let isHeader = false;
+            let headerLevel = 0;
+            let isListItem = false;
+            let listMarker = null;
+
+            if (content.trim().startsWith('>')) {
+                isBlockquote = true;
+                content = content.trim().replace(/^>\s*/, '');
+            }
+
+            const headerMatch = content.match(/^(#{1,6})\s+(.*)$/);
+            if (headerMatch) {
+                headerLevel = headerMatch[1].length;
+                content = headerMatch[2];
+                isHeader = true;
+            }
+
+            const listMatch = content.match(/^(\s*)([-*+])\s+(.*)$/);
+            const orderedMatch = content.match(/^(\s*)(\d+)\.\s+(.*)$/);
+
+            if (orderedMatch) {
+                isListItem = true;
+                listMarker = `${orderedMatch[2]}.`;
+                content = orderedMatch[3];
+            } else if (listMatch) {
+                isListItem = true;
+                listMarker = '•';
+                content = listMatch[3];
+            }
+
+            out.push({
+                type: 'line',
+                key: `line-${i}`,
+                isHeader,
+                headerLevel,
+                isListItem,
+                listMarker,
+                isBlockquote,
+                parts: parseInline(content)
+            });
+        }
+
+        if (inCodeBlock) pushCodeBlock('eof');
+        return out;
+    }, [text]);
+
+    const selectionRange = useMemo(() => {
+        const start = selection?.start;
+        const end = selection?.end;
+        if (start == null || end == null) return null;
+        return { min: Math.min(start, end), max: Math.max(start, end) };
+    }, [selection?.start, selection?.end]);
 
     let wordCounter = 0;
 
-    // Word wrapper for interactivity
-    const wrapWords = (rawText, isBold, isItalic, baseKey) => {
-        return rawText.split(/(\s+)/).map((word, i) => {
-            if (!word.trim()) return <span key={`${baseKey}-${i}`}>{word}</span>;
+    const wrapWords = (rawText, opts, baseKey) => {
+        const { isBold, isItalic } = opts;
+
+        return rawText.split(/(\s+)/).map((chunk, i) => {
+            if (!chunk.trim()) return <span key={`${baseKey}-ws-${i}`}>{chunk}</span>;
 
             const currentIdx = wordCounter++;
-
-            // Range check for selection (handles reverse drag too)
-            const isSelected = selection?.isSelecting && (
-                (currentIdx >= selection.start && currentIdx <= selection.end) ||
-                (currentIdx >= selection.end && currentIdx <= selection.start)
-            );
+            const isSelected = selectionRange && currentIdx >= selectionRange.min && currentIdx <= selectionRange.max;
 
             return (
                 <span
-                    key={`${baseKey}-${i}`}
+                    key={`${baseKey}-w-${i}`}
                     data-index={currentIdx}
                     onMouseEnter={handleMouseEnter}
                     onClick={handleClick}
                     className={clsx(
-                        "transition-all duration-100 inline rounded-sm px-0.5 -mx-0.5 border border-transparent whitespace-pre-wrap",
-                        "hover:text-blue-300 hover:bg-blue-500/10 cursor-text",
+                        "transition-all duration-100 inline rounded-sm px-0.5 -mx-0.5 border border-transparent",
+                        "hover:text-blue-300 hover:bg-blue-500/10 cursor-default",
                         isBold && "font-bold text-blue-300",
                         isItalic && "italic text-purple-300",
                         isSelected && "bg-blue-500/30 text-white"
                     )}
                 >
-                    {word}
+                    {chunk}
                 </span>
             );
         });
     };
 
-    const lines = text.split('\n');
-    return lines.map((line, lineIdx) => {
-        let content = line;
-        let isHeader = false;
-        let isListItem = false;
-        let isBlockquote = false;
-        let headerLevel = 0;
+    if (!text) return null;
 
-        // 1. Detect Blockquote
-        if (content.trim().startsWith('>')) {
-            isBlockquote = true;
-            content = content.trim().replace(/^>\s*/, '');
-        }
+    return (
+        <>
+            {parsed.map((node) => {
+                if (node.type === 'hr') return <hr key={node.key} className="my-4 border-white/10" />;
 
-        // 2. Detect Headers
-        const headerMatch = content.match(/^(#{1,6})\s+(.*)$/);
-        if (headerMatch) {
-            headerLevel = headerMatch[1].length;
-            content = headerMatch[2];
-            isHeader = true;
-        }
+                if (node.type === 'codeblock') {
+                    return (
+                        <pre key={node.key} className="my-3">
+                            <code>{node.code}</code>
+                        </pre>
+                    );
+                }
 
-        // 3. Horizontal Rule
-        if (content.trim() === '---' || content.trim() === '***') {
-            return <hr key={lineIdx} className="my-4 border-white/10" />;
-        }
+                const headerClass =
+                    node.isHeader
+                        ? `font-black text-white mt-4 border-b border-white/5 pb-1 ${node.headerLevel === 1 ? 'text-xl' : node.headerLevel === 2 ? 'text-lg' : 'text-md'
+                        }`
+                        : '';
 
-        // 4. List Items
-        const listMatch = content.match(/^(\s*[-*+]|\s*\d+\.)\s+(.*)$/);
-        if (listMatch) {
-            content = listMatch[2];
-            isListItem = true;
-        }
+                return (
+                    <div
+                        key={node.key}
+                        className={clsx(
+                            "min-h-[1.5em] mb-1 clear-both",
+                            headerClass,
+                            node.isListItem && "pl-6 relative font-medium",
+                            node.isBlockquote && "pl-4 border-l-4 border-blue-500/30 text-white/70 italic bg-white/5 py-1 my-2 rounded-r"
+                        )}
+                    >
+                        {node.isListItem && (
+                            <span className="absolute left-0 text-blue-400 font-black">
+                                {node.listMarker}
+                            </span>
+                        )}
 
-        // 5. Nested Bold/Italic Parsing
-        const parts = content.split(/(\*\*.*?\*\*|__.*?__|[*][^*].*?[*]|_.*?_)/g);
+                        {node.parts.map((part, pIdx) => {
+                            const baseKey = `${node.key}-${pIdx}`;
 
-        return (
-            <div key={lineIdx} className={clsx(
-                "min-h-[1.5em] mb-1 clear-both",
-                isHeader && `font-black text-white mt-4 border-b border-white/5 pb-1 ${headerLevel === 1 ? 'text-xl' : headerLevel === 2 ? 'text-lg' : 'text-md'}`,
-                isListItem && "pl-5 relative before:content-['•'] before:absolute before:left-0 before:text-blue-400 font-medium",
-                isBlockquote && "pl-4 border-l-4 border-blue-500/30 text-white/70 italic bg-white/5 py-1 my-2 rounded-r"
-            )}>
-                {parts.map((part, pIdx) => {
-                    const baseKey = `${lineIdx}-${pIdx}`;
-                    // Bold
-                    if (part.startsWith('**') && part.endsWith('**')) {
-                        return wrapWords(part.slice(2, -2), true, false, baseKey);
-                    }
-                    if (part.startsWith('__') && part.endsWith('__')) {
-                        return wrapWords(part.slice(2, -2), true, false, baseKey);
-                    }
-                    // Italic
-                    if (part.startsWith('*') && part.endsWith('*')) {
-                        return wrapWords(part.slice(1, -1), false, true, baseKey);
-                    }
-                    if (part.startsWith('_') && part.endsWith('_')) {
-                        return wrapWords(part.slice(1, -1), false, true, baseKey);
-                    }
-                    // Normal
-                    return wrapWords(part, false, false, baseKey);
-                })}
-            </div>
-        );
-    });
+                            if (part.t === 'code') {
+                                return (
+                                    <code key={`${baseKey}-code`} className="mx-0.5">
+                                        {part.v}
+                                    </code>
+                                );
+                            }
+
+                            if (part.t === 'strong') return <React.Fragment key={baseKey}>{wrapWords(part.v, { isBold: true, isItalic: false }, baseKey)}</React.Fragment>;
+                            if (part.t === 'em') return <React.Fragment key={baseKey}>{wrapWords(part.v, { isBold: false, isItalic: true }, baseKey)}</React.Fragment>;
+
+                            return <React.Fragment key={baseKey}>{wrapWords(part.v, { isBold: false, isItalic: false }, baseKey)}</React.Fragment>;
+                        })}
+                    </div>
+                );
+            })}
+        </>
+    );
 };
