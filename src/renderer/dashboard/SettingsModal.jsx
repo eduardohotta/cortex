@@ -76,7 +76,7 @@ export default function SettingsModal({ isOpen, onClose }) {
                         <Settings size={32} strokeWidth={1.5} />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Cockpit</h2>
+                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Configurações</h2>
                         <p className="text-xs text-gray-500 font-bold uppercase tracking-[0.4em] mt-1">Configuração Neural & Hardware</p>
                     </div>
                 </div>

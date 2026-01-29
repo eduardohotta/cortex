@@ -1,38 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useApp, ACTIONS } from '../contexts/AppContext';
-import { Button } from '../components/Button';
-import { Save, Bot, MessageSquare, StickyNote, Sparkles, CheckCircle2, AlertCircle, Terminal, UserSearch, Settings2, Zap, Ban, Ruler, ShieldCheck, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
+import {
+    Save,
+    Bot,
+    MessageSquare,
+    Sparkles,
+    Terminal,
+    UserSearch,
+    Settings2,
+    Zap,
+    Ban,
+    Ruler,
+    ShieldCheck,
+    ChevronDown,
+    HelpCircle
+} from 'lucide-react';
 import clsx from 'clsx';
 
-// Help Tooltip Component
-function HelpTooltip({ text }) {
-    const [isVisible, setIsVisible] = useState(false);
-
-    return (
-        <div className="relative inline-flex ml-2">
-            <button
-                type="button"
-                onMouseEnter={() => setIsVisible(true)}
-                onMouseLeave={() => setIsVisible(false)}
-                onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
-                className="w-4 h-4 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-            >
-                <HelpCircle size={10} className="text-gray-400" />
-            </button>
-            {isVisible && (
-                <div
-                    className="absolute top-full left-0 mt-2 w-72 p-4 bg-[#18181b] border border-white/20 rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-150"
-                    style={{ zIndex: 99999 }}
-                >
-                    <p className="text-xs text-gray-200 leading-relaxed">{text}</p>
-                    <div className="absolute bottom-full left-4 w-3 h-3 bg-[#18181b] border-l border-t border-white/20 rotate-45 -mb-1.5" />
-                </div>
-            )}
-        </div>
-    );
-}
-
-// Default behavior configuration
 const DEFAULTS = {
     responseStyle: 'short',
     initiativeLevel: 'minimal',
@@ -43,95 +27,126 @@ const DEFAULTS = {
     negativeRules: ''
 };
 
-// Options for selects
 const RESPONSE_STYLES = [
-    { value: 'short', label: 'Curto e direto', icon: Zap },
-    { value: 'didactic', label: 'Didático (passo a passo)', icon: MessageSquare },
-    { value: 'strategic', label: 'Estratégico (resposta + insight)', icon: Sparkles },
-    { value: 'code', label: 'Código primeiro', icon: Terminal }
+    { value: 'short', label: 'Curto', Icon: Zap },
+    { value: 'didactic', label: 'Didático', Icon: MessageSquare },
+    { value: 'strategic', label: 'Estratégico', Icon: Sparkles },
+    { value: 'code', label: 'Código', Icon: Terminal }
 ];
 
 const INITIATIVE_LEVELS = [
-    { value: 'minimal', label: 'Apenas responde o perguntado' },
-    { value: 'brief', label: 'Complementa com observações breves' },
-    { value: 'proactive', label: 'Sugere melhorias e alertas' }
+    { value: 'minimal', label: 'Só responde' },
+    { value: 'brief', label: 'Complementa breve' },
+    { value: 'proactive', label: 'Proativo' }
 ];
 
 const RESPONSE_SIZES = [
     { value: 'very_short', label: 'Muito curta' },
     { value: 'medium', label: 'Média' },
-    { value: 'detailed', label: 'Detalhada (quando necessário)' }
+    { value: 'detailed', label: 'Detalhada' }
 ];
 
-// Collapsible Section Component
-function Section({ title, icon: Icon, children, defaultOpen = true, help }) {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+const styles = {
+    page: 'flex flex-col h-full bg-[#0a0a0c] p-10 animate-in fade-in duration-500',
+    nameWrap: 'flex justify-center mb-8',
+    nameInput:
+        'bg-white/5 border border-white/10 rounded-xl px-5 py-2 text-sm font-semibold text-gray-300 ' +
+        'outline-none focus:border-white/20 focus:text-white text-center placeholder:opacity-30',
+    card:
+        'flex-1 flex flex-col bg-[#0d0d0f] border border-white/5 rounded-[28px] overflow-hidden shadow-2xl',
+    tabs: 'flex border-b border-white/5',
+    tabBtn:
+        'flex items-center gap-2 px-8 py-4 text-[10px] font-black uppercase tracking-widest transition-all relative',
+    tabActive: 'text-white',
+    tabInactive: 'text-gray-600 hover:text-gray-300',
+    tabUnderline: 'absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500/90',
+    body: 'flex-1 p-8 overflow-y-auto',
+    footer: 'p-6 border-t border-white/5 bg-black/40 flex items-center justify-between gap-4',
+    statusOk: 'text-[10px] font-black uppercase tracking-[0.2em] text-green-500',
+    saveBtn:
+        'px-8 py-2.5 bg-white text-black rounded-xl flex items-center gap-2 text-[10px] font-black ' +
+        'uppercase tracking-[0.25em] hover:bg-gray-100 active:scale-95 transition-all disabled:opacity-40'
+};
+
+function MiniHelp({ text }) {
+    const [open, setOpen] = useState(false);
+
+    if (!text) return null;
 
     return (
-        <div className="border border-white/5 rounded-2xl bg-black/20">
+        <span className="relative inline-flex">
             <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={clsx(
-                    "w-full flex items-center justify-between px-6 py-4 hover:bg-white/5 transition-colors",
-                    isOpen ? "rounded-t-2xl" : "rounded-2xl"
-                )}
+                type="button"
+                onMouseEnter={() => setOpen(true)}
+                onMouseLeave={() => setOpen(false)}
+                onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+                className="w-4 h-4 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+                aria-label="Ajuda"
             >
-                <div className="flex items-center gap-3">
-                    <Icon size={14} className="text-gray-400" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300">{title}</span>
-                    {help && <HelpTooltip text={help} />}
-                </div>
-                {isOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                <HelpCircle size={10} className="text-gray-400" />
             </button>
-            {isOpen && (
-                <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                    {children}
-                </div>
+
+            {open && (
+                <span
+                    className="absolute top-full left-0 mt-2 w-72 p-3 bg-[#18181b] border border-white/15 rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.75)]"
+                    style={{ zIndex: 99999 }}
+                >
+                    <span className="block text-xs text-gray-200 leading-relaxed">{text}</span>
+                </span>
             )}
+        </span>
+    );
+}
+
+function FieldLabel({ Icon, title, help }) {
+    return (
+        <div className="flex items-center gap-2 mb-3 text-gray-400">
+            <Icon size={14} />
+            <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">{title}</span>
+            <MiniHelp text={help} />
         </div>
     );
 }
 
-// Select Component
-function Select({ value, onChange, options, className }) {
+function Select({ value, onChange, options }) {
     return (
-        <select
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className={clsx(
-                "w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-300",
-                "outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20",
-                "appearance-none cursor-pointer transition-all hover:border-white/20",
-                className
-            )}
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
-        >
-            {options.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-        </select>
+        <div className="relative">
+            <select
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className={clsx(
+                    'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-300',
+                    'outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20',
+                    'appearance-none cursor-pointer transition-all hover:border-white/20'
+                )}
+            >
+                {options.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+        </div>
     );
 }
 
-// Toggle Component
 function Toggle({ checked, onChange, label }) {
     return (
-        <label className="flex items-center justify-between py-3 cursor-pointer group">
-            <span className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">{label}</span>
+        <label className="flex items-center justify-between py-3 cursor-pointer">
+            <span className="text-sm text-gray-400 hover:text-gray-300 transition-colors">{label}</span>
             <button
                 type="button"
                 role="switch"
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
                 className={clsx(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                    checked ? "bg-blue-600" : "bg-white/10"
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    checked ? 'bg-blue-600' : 'bg-white/10'
                 )}
             >
                 <span
                     className={clsx(
-                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-lg",
-                        checked ? "translate-x-6" : "translate-x-1"
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-lg',
+                        checked ? 'translate-x-6' : 'translate-x-1'
                     )}
                 />
             </button>
@@ -139,40 +154,69 @@ function Toggle({ checked, onChange, label }) {
     );
 }
 
+function Collapsible({ title, Icon, help, defaultOpen = true, children }) {
+    return (
+        <details
+            className="border border-white/5 rounded-2xl bg-black/20 overflow-hidden"
+            defaultOpen={defaultOpen}
+        >
+            <summary className="list-none cursor-pointer select-none px-5 py-4 hover:bg-white/5 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Icon size={14} className="text-gray-400" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300">{title}</span>
+                    <MiniHelp text={help} />
+                </div>
+                <ChevronDown size={14} className="text-gray-400" />
+            </summary>
+
+            <div className="px-5 pb-5 pt-1">
+                {children}
+            </div>
+        </details>
+    );
+}
+
 export default function AssistantEditor() {
     const { state, dispatch } = useApp();
     const { currentAssistantId, assistants } = state;
 
-    // Local state for form
+    const [activeTab, setActiveTab] = useState('sistema');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [savedToast, setSavedToast] = useState(false);
+
     const [formData, setFormData] = useState({
         name: '',
         systemPrompt: '',
         assistantInstructions: '',
         additionalContext: '',
-        // Behavior settings with defaults
         ...DEFAULTS
     });
-    const [isLoading, setIsLoading] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('sistema');
-    const [showStatus, setShowStatus] = useState(false);
 
-    // Initial Load
+    const tabs = useMemo(() => ([
+        { id: 'sistema', label: 'Sistema', Icon: Bot },
+        { id: 'comportamento', label: 'Comportamento', Icon: Settings2 },
+        { id: 'acompanhamento', label: 'Contexto', Icon: UserSearch }
+    ]), []);
+
     useEffect(() => {
         if (!currentAssistantId) return;
 
-        const load = async () => {
+        let alive = true;
+
+        (async () => {
             setIsLoading(true);
             try {
                 const meta = assistants.find(a => a.id === currentAssistantId);
                 const profile = await window.electronAPI.settings.loadProfile(currentAssistantId);
+
+                if (!alive) return;
 
                 setFormData({
                     name: meta?.name || profile?.name || 'Assistente',
                     systemPrompt: profile?.systemPrompt || '',
                     assistantInstructions: profile?.assistantInstructions || '',
                     additionalContext: profile?.additionalContext || '',
-                    // Behavior settings with defaults
                     responseStyle: profile?.responseStyle || DEFAULTS.responseStyle,
                     initiativeLevel: profile?.initiativeLevel || DEFAULTS.initiativeLevel,
                     responseSize: profile?.responseSize || DEFAULTS.responseSize,
@@ -182,219 +226,232 @@ export default function AssistantEditor() {
                     negativeRules: profile?.negativeRules || DEFAULTS.negativeRules
                 });
             } finally {
-                setIsLoading(false);
+                if (alive) setIsLoading(false);
             }
-        };
-        load();
+        })();
+
+        return () => { alive = false; };
     }, [currentAssistantId, assistants]);
 
-    const handleChange = (field, value) => {
+    const setField = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-        if (showStatus) setShowStatus(false);
-    };
+        if (savedToast) setSavedToast(false);
+    }, [savedToast]);
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
+        if (!currentAssistantId) return;
+
         setIsSaving(true);
         try {
             await window.electronAPI.settings.saveProfile(currentAssistantId, formData);
             const updated = await window.electronAPI.settings.getProfiles();
             dispatch({ type: ACTIONS.SET_ASSISTANTS, payload: updated });
-            setShowStatus(true);
-            setTimeout(() => setShowStatus(false), 3000);
+
+            setSavedToast(true);
+            setTimeout(() => setSavedToast(false), 2500);
         } finally {
             setIsSaving(false);
         }
-    };
+    }, [currentAssistantId, formData, dispatch]);
 
     if (!currentAssistantId) return null;
 
     return (
-        <div className="flex flex-col h-full bg-[#0a0a0c] animate-in fade-in duration-700 p-12">
-
-            {/* Header: Assistant Name (Centered or Left as per Image 2) */}
-            <div className="flex justify-center mb-10 no-drag">
+        <div className={styles.page}>
+            <div className={styles.nameWrap}>
                 <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => handleChange('name', e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded-xl px-6 py-2 text-sm font-bold text-gray-400 focus:text-white outline-none w-auto text-center placeholder:opacity-20"
-                    placeholder="Assistant Name (optional)"
+                    onChange={(e) => setField('name', e.target.value)}
+                    className={styles.nameInput}
+                    placeholder="Nome do assistente"
                 />
             </div>
 
-            {/* Main Editor Card */}
-            <div className="flex-1 flex flex-col bg-[#0d0d0f] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl no-drag">
-
-                {/* Tabs Area */}
-                <div className="flex border-b border-white/5">
-                    <button
-                        onClick={() => setActiveTab('sistema')}
-                        className={clsx(
-                            "flex items-center gap-3 px-10 py-5 text-[10px] font-black uppercase tracking-widest transition-all relative",
-                            activeTab === 'sistema' ? "text-white" : "text-gray-600 hover:text-gray-400"
-                        )}
-                    >
-                        <Bot size={16} /> Sistema
-                        {activeTab === 'sistema' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_-4px_10px_rgba(59,130,246,0.5)]" />}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('comportamento')}
-                        className={clsx(
-                            "flex items-center gap-3 px-10 py-5 text-[10px] font-black uppercase tracking-widest transition-all relative",
-                            activeTab === 'comportamento' ? "text-white" : "text-gray-600 hover:text-gray-400"
-                        )}
-                    >
-                        <Settings2 size={16} /> Comportamento
-                        {activeTab === 'comportamento' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_-4px_10px_rgba(59,130,246,0.5)]" />}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('acompanhamento')}
-                        className={clsx(
-                            "flex items-center gap-3 px-10 py-5 text-[10px] font-black uppercase tracking-widest transition-all relative",
-                            activeTab === 'acompanhamento' ? "text-white" : "text-gray-600 hover:text-gray-400"
-                        )}
-                    >
-                        <MessageSquare size={16} /> Acompanhamento
-                        {activeTab === 'acompanhamento' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_-4px_10px_rgba(59,130,246,0.5)]" />}
-                    </button>
+            <div className={styles.card}>
+                <div className={styles.tabs}>
+                    {tabs.map(({ id, label, Icon }) => (
+                        <button
+                            key={id}
+                            type="button"
+                            onClick={() => setActiveTab(id)}
+                            className={clsx(styles.tabBtn, activeTab === id ? styles.tabActive : styles.tabInactive)}
+                        >
+                            <Icon size={16} />
+                            {label}
+                            {activeTab === id && <div className={styles.tabUnderline} />}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Content Area */}
-                <div className="flex-1 p-10 overflow-y-auto">
-                    {activeTab === 'sistema' && (
-                        <div className="flex-1 flex flex-col h-full animate-in fade-in duration-300">
-                            <div className="flex items-center gap-3 mb-4 text-gray-400">
-                                <Terminal size={14} />
-                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">System Prompt (Cognição)</span>
-                                <HelpTooltip text="Define a personalidade e papel principal do assistente. Aqui você configura QUEM o assistente é e COMO ele deve se comportar de forma geral." />
+                <div className={styles.body}>
+                    {isLoading && (
+                        <div className="text-sm text-gray-500">Carregando…</div>
+                    )}
+
+                    {!isLoading && activeTab === 'sistema' && (
+                        <div className="grid gap-6">
+                            <div>
+                                <FieldLabel
+                                    Icon={Terminal}
+                                    title="System Prompt"
+                                    help="Define o papel, tom e regras gerais do assistente."
+                                />
+                                <textarea
+                                    value={formData.systemPrompt}
+                                    onChange={(e) => setField('systemPrompt', e.target.value)}
+                                    className="w-full min-h-[220px] bg-black/40 border border-white/5 rounded-2xl p-6 text-sm leading-relaxed text-gray-300 outline-none resize-none focus:border-white/15"
+                                    placeholder="Digite o prompt do sistema…"
+                                />
                             </div>
-                            <textarea
-                                value={formData.systemPrompt}
-                                onChange={(e) => handleChange('systemPrompt', e.target.value)}
-                                className="flex-1 min-h-[300px] bg-black/40 border border-white/5 rounded-2xl p-8 text-sm leading-relaxed text-gray-400 focus:text-gray-200 outline-none resize-none transition-all placeholder:text-gray-800"
-                                placeholder="Digite o prompt do sistema..."
-                            />
+
+                            <div>
+                                <FieldLabel
+                                    Icon={Bot}
+                                    title="Instruções extras"
+                                    help="Regras adicionais específicas para este assistente (opcional)."
+                                />
+                                <textarea
+                                    value={formData.assistantInstructions}
+                                    onChange={(e) => setField('assistantInstructions', e.target.value)}
+                                    className="w-full min-h-[160px] bg-black/40 border border-white/5 rounded-2xl p-6 text-sm leading-relaxed text-gray-300 outline-none resize-none focus:border-white/15"
+                                    placeholder="Ex.: sempre responder em pt-BR, usar exemplos curtos…"
+                                />
+                            </div>
                         </div>
                     )}
 
-                    {activeTab === 'comportamento' && (
-                        <div className="flex flex-col gap-4 animate-in fade-in duration-300">
-                            {/* Response Style */}
-                            <Section title="Estilo de Resposta" icon={Zap} help="Como o assistente deve estruturar as respostas: direto ao ponto, explicativo passo a passo, ou com insights estratégicos.">
-                                <div className="grid grid-cols-2 gap-3 mt-2">
-                                    {RESPONSE_STYLES.map(style => (
+                    {!isLoading && activeTab === 'comportamento' && (
+                        <div className="flex flex-col gap-4">
+                            <Collapsible
+                                title="Estilo de resposta"
+                                Icon={Zap}
+                                help="Escolha o formato padrão das respostas."
+                                defaultOpen
+                            >
+                                <div className="grid grid-cols-2 gap-3">
+                                    {RESPONSE_STYLES.map(({ value, label, Icon }) => (
                                         <button
-                                            key={style.value}
-                                            onClick={() => handleChange('responseStyle', style.value)}
+                                            key={value}
+                                            type="button"
+                                            onClick={() => setField('responseStyle', value)}
                                             className={clsx(
-                                                "flex items-center gap-3 px-4 py-3 rounded-xl border transition-all",
-                                                formData.responseStyle === style.value
-                                                    ? "bg-blue-600/20 border-blue-500/50 text-blue-400"
-                                                    : "bg-black/20 border-white/5 text-gray-500 hover:border-white/20 hover:text-gray-300"
+                                                'flex items-center gap-2 px-4 py-3 rounded-xl border transition-all text-sm',
+                                                formData.responseStyle === value
+                                                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                                    : 'bg-black/20 border-white/5 text-gray-500 hover:border-white/20 hover:text-gray-300'
                                             )}
                                         >
-                                            <style.icon size={14} />
-                                            <span className="text-xs font-medium">{style.label}</span>
+                                            <Icon size={14} />
+                                            {label}
                                         </button>
                                     ))}
                                 </div>
-                            </Section>
+                            </Collapsible>
 
-                            {/* Initiative Level */}
-                            <Section title="Grau de Iniciativa" icon={Sparkles} defaultOpen={false} help="Quanto o assistente pode complementar além do que foi perguntado. Mínimo = só responde, Máximo = sugere melhorias proativamente.">
+                            <Collapsible
+                                title="Iniciativa"
+                                Icon={Sparkles}
+                                help="Define o quanto o assistente vai além do perguntado."
+                                defaultOpen={false}
+                            >
                                 <Select
                                     value={formData.initiativeLevel}
-                                    onChange={(v) => handleChange('initiativeLevel', v)}
+                                    onChange={(v) => setField('initiativeLevel', v)}
                                     options={INITIATIVE_LEVELS}
                                 />
-                            </Section>
+                            </Collapsible>
 
-                            {/* Response Size */}
-                            <Section title="Limite de Tamanho" icon={Ruler} defaultOpen={false} help="Controla o tamanho máximo das respostas. Para entrevistas, 'Curta' geralmente funciona melhor.">
+                            <Collapsible
+                                title="Tamanho"
+                                Icon={Ruler}
+                                help="Limite padrão para o tamanho das respostas."
+                                defaultOpen={false}
+                            >
                                 <Select
                                     value={formData.responseSize}
-                                    onChange={(v) => handleChange('responseSize', v)}
+                                    onChange={(v) => setField('responseSize', v)}
                                     options={RESPONSE_SIZES}
                                 />
-                            </Section>
+                            </Collapsible>
 
-                            {/* Validation / Anti-hallucination */}
-                            <Section title="Validação" icon={ShieldCheck} defaultOpen={false} help="Configurações anti-alucinação: fazer o assistente admitir quando não sabe, pedir esclarecimentos, e evitar respostas genéricas.">
+                            <Collapsible
+                                title="Validação"
+                                Icon={ShieldCheck}
+                                help="Anti-alucinação e qualidade de resposta."
+                                defaultOpen={false}
+                            >
                                 <div className="divide-y divide-white/5">
                                     <Toggle
                                         checked={formData.admitIgnorance}
-                                        onChange={(v) => handleChange('admitIgnorance', v)}
+                                        onChange={(v) => setField('admitIgnorance', v)}
                                         label="Admitir quando não souber"
                                     />
                                     <Toggle
                                         checked={formData.askClarification}
-                                        onChange={(v) => handleChange('askClarification', v)}
+                                        onChange={(v) => setField('askClarification', v)}
                                         label="Pedir esclarecimento se ambíguo"
                                     />
                                     <Toggle
                                         checked={formData.avoidGeneric}
-                                        onChange={(v) => handleChange('avoidGeneric', v)}
+                                        onChange={(v) => setField('avoidGeneric', v)}
                                         label="Evitar respostas genéricas"
                                     />
                                 </div>
-                            </Section>
+                            </Collapsible>
 
-                            {/* Negative Rules */}
-                            <Section title="Regras Negativas" icon={Ban} defaultOpen={false} help="Liste o que o assistente NÃO deve fazer. Exemplo: 'Não mencionar que é IA', 'Não dar respostas muito longas'.">
+                            <Collapsible
+                                title="Regras negativas"
+                                Icon={Ban}
+                                help="Lista do que o assistente NÃO deve fazer (uma por linha)."
+                                defaultOpen={false}
+                            >
                                 <textarea
                                     value={formData.negativeRules}
-                                    onChange={(e) => handleChange('negativeRules', e.target.value)}
-                                    className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-sm leading-relaxed text-gray-400 focus:text-gray-200 outline-none resize-none transition-all placeholder:text-gray-700 min-h-[100px]"
-                                    placeholder="O que o assistente NÃO deve fazer... (uma regra por linha)"
+                                    onChange={(e) => setField('negativeRules', e.target.value)}
+                                    className="w-full min-h-[110px] bg-black/40 border border-white/5 rounded-xl p-4 text-sm leading-relaxed text-gray-300 outline-none resize-none focus:border-white/15"
+                                    placeholder="Ex.: não mencionar políticas internas…"
                                 />
-                            </Section>
+                            </Collapsible>
                         </div>
                     )}
 
-                    {activeTab === 'acompanhamento' && (
-                        <div className="flex-1 flex flex-col animate-in fade-in duration-300">
-                            <div className="flex items-center gap-3 mb-4 text-gray-400">
-                                <UserSearch size={14} />
-                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">Base de Conhecimento (Contexto)</span>
-                                <HelpTooltip text="Informações específicas que o assistente deve considerar: seu currículo, stack técnica, projetos, regras de negócio. Tudo que você quer que ele 'lembre' automaticamente." />
-                            </div>
+                    {!isLoading && activeTab === 'acompanhamento' && (
+                        <div>
+                            <FieldLabel
+                                Icon={UserSearch}
+                                title="Base de conhecimento"
+                                help="Contexto que o assistente deve considerar automaticamente."
+                            />
                             <textarea
                                 value={formData.additionalContext}
-                                onChange={(e) => handleChange('additionalContext', e.target.value)}
-                                className="flex-1 min-h-[300px] bg-black/40 border border-white/5 rounded-2xl p-8 text-sm leading-relaxed text-gray-400 focus:text-gray-200 outline-none resize-none transition-all placeholder:text-gray-800"
-                                placeholder="Insira o contexto ou instruções de acompanhamento..."
+                                onChange={(e) => setField('additionalContext', e.target.value)}
+                                className="w-full min-h-[320px] bg-black/40 border border-white/5 rounded-2xl p-6 text-sm leading-relaxed text-gray-300 outline-none resize-none focus:border-white/15"
+                                placeholder="Currículo, stack, projetos, regras do produto…"
                             />
                         </div>
                     )}
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-8 border-t border-white/5 bg-black/40 flex justify-end items-center gap-6">
-                    {showStatus && (
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-green-500 animate-in fade-in zoom-in duration-300">
-                            Assistente salvo com sucesso
-                        </span>
-                    )}
+                <div className={styles.footer}>
+                    <div className="min-h-[18px]">
+                        {savedToast && (
+                            <span className={styles.statusOk}>
+                                <CheckCircle2 size={14} className="inline-block mr-2 -mt-0.5" />
+                                Salvo
+                            </span>
+                        )}
+                    </div>
+
                     <button
+                        type="button"
                         onClick={handleSave}
-                        disabled={isSaving}
-                        className="
-        px-10 py-2.5
-        bg-white text-black
-        rounded-xl
-        flex items-center gap-2
-        text-[10px] font-black uppercase tracking-[0.25em]
-        shadow-xl
-        hover:bg-gray-100
-        active:scale-95
-        transition-all
-        disabled:opacity-40
-    "
+                        disabled={isSaving || isLoading}
+                        className={styles.saveBtn}
                     >
                         <Save size={14} />
-                        Salvar
+                        {isSaving ? 'Salvando…' : 'Salvar'}
                     </button>
-
                 </div>
             </div>
         </div>
