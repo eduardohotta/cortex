@@ -48,7 +48,8 @@ class SettingsManager {
                     labelCopy: 'Copiar Último',
                     labelCopied: 'Copiado!',
                     labelTipsPrefix: 'Dica: Hover + {hotkey} para highlights. Alt + Drag para seleção.',
-                    profiles: {}
+                    profiles: {},
+                    hiddenBuiltins: []
                 }
             });
         } catch (error) {
@@ -201,7 +202,7 @@ class SettingsManager {
     /**
      * Save a profile configuration with behavior defaults
      */
-    saveProfile(name, config) {
+    saveProfile(id, config) {
         // Smart defaults for behavior settings
         const defaults = {
             responseStyle: 'short',
@@ -214,12 +215,14 @@ class SettingsManager {
         };
 
         const profiles = this.store.get('profiles', {});
-        profiles[name] = {
+        profiles[id] = {
             ...defaults,
             ...config,
+            id,
             savedAt: new Date().toISOString()
         };
         this.store.set('profiles', profiles);
+        console.log(`[SettingsManager] Profile saved: ${id}`);
     }
 
     /**
@@ -289,16 +292,24 @@ class SettingsManager {
      */
     loadProfile(name) {
         const profiles = this.store.get('profiles', {});
-        if (profiles[name]) return profiles[name];
-
-        // Fallback for builtin modes
-        const builtinModes = ['rh', 'technical', 'leadership', 'english', 'startup'];
-        if (builtinModes.includes(name)) {
+        if (profiles[name]) {
             return {
                 id: name,
-                name: name.toUpperCase(),
-                systemPrompt: this.getDefaultPrompt(name),
-                isBuiltin: true
+                ...profiles[name]
+            };
+        }
+
+        // Fallback for builtin modes
+        const builtinModes = ['rh', 'technical', 'leadership', 'english', 'startup', 'default'];
+        if (builtinModes.includes(name)) {
+            const modeId = name === 'default' ? 'rh' : name;
+            return {
+                id: name,
+                name: name === 'default' ? 'Padrão' : name.toUpperCase(),
+                systemPrompt: this.getDefaultPrompt(modeId),
+                isBuiltin: true,
+                responseStyle: 'short',
+                initiativeLevel: 'minimal'
             };
         }
 
@@ -310,12 +321,30 @@ class SettingsManager {
      */
     getProfiles() {
         const profiles = this.store.get('profiles', {});
-        return Object.entries(profiles).map(([id, data]) => ({
+        const hidden = this.store.get('hiddenBuiltins', []);
+
+        const custom = Object.entries(profiles).map(([id, data]) => ({
             id,
             name: data.name || 'Assistente',
             icon: data.icon || '🤖',
             ...data
         }));
+
+        const builtinModes = ['default', 'rh', 'technical', 'leadership', 'english', 'startup'];
+        const builtins = builtinModes
+            .filter(id => !profiles[id] && !hidden.includes(id)) // Only show builtins that haven't been customized and aren't hidden
+            .map(id => {
+                const modeId = id === 'default' ? 'rh' : id;
+                return {
+                    id,
+                    name: id === 'default' ? 'Assistente Padrão' : id.toUpperCase(),
+                    icon: id === 'default' ? '🤖' : '🚀',
+                    systemPrompt: this.getDefaultPrompt(modeId),
+                    isBuiltin: true
+                };
+            });
+
+        return [...builtins, ...custom];
     }
 
     /**
@@ -323,9 +352,19 @@ class SettingsManager {
      */
     deleteProfile(name) {
         const profiles = this.store.get('profiles', {});
+        const builtinModes = ['rh', 'technical', 'leadership', 'english', 'startup'];
+
+        if (builtinModes.includes(name)) {
+            const hidden = this.store.get('hiddenBuiltins', []);
+            if (!hidden.includes(name)) {
+                hidden.push(name);
+                this.store.set('hiddenBuiltins', hidden);
+            }
+        }
+
         delete profiles[name];
         this.store.set('profiles', profiles);
-        console.log(`[SettingsManager] Deleted profile: ${name}`);
+        console.log(`[SettingsManager] Deleted/Hidden profile: ${name}`);
     }
 
     /**

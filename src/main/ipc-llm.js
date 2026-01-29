@@ -123,11 +123,15 @@ function registerLLMHandlers(services) {
             console.log('\n' + '='.repeat(50));
             console.log('🤖 [AI REQUEST INSPECTOR]');
             console.log('='.repeat(50));
-            console.log('📍 PROFILE ID:', settingsManager.get('currentAssistantId') || 'default');
+            console.log('📍 PROFILE ID:', assistantId);
             console.log(
                 '📍 PROFILE TYPE:',
-                profile.isBuiltin ? 'BUILTIN DEFAULT' : (profile.id ? 'CUSTOM' : 'EMPTY FALLBACK')
+                profile.isBuiltin ? 'SISTEMA (Built-in)' : (profile.savedAt ? 'CUSTOMIZADO' : 'NÃO INSTANCIADO')
             );
+            console.log('📍 RESPONSE STYLE:', profile.responseStyle || 'default (short)');
+            console.log('📍 INITIATIVE:', profile.initiativeLevel || 'default (minimal)');
+            console.log('📍 PROMPT LENGTH:', mainPrompt.length);
+            console.log('='.repeat(50));
             console.log('📍 PROFILE DATA:', JSON.stringify(profile, null, 2));
             console.log('📍 PROVIDER:', provider);
             console.log('📍 MODEL:', model);
