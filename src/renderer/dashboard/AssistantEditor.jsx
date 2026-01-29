@@ -13,7 +13,8 @@ import {
     Ruler,
     ShieldCheck,
     ChevronDown,
-    HelpCircle
+    HelpCircle,
+    CheckCircle2
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -449,8 +450,8 @@ export default function AssistantEditor() {
                         disabled={isSaving || isLoading}
                         className={styles.saveBtn}
                     >
-                        <Save size={14} />
-                        {isSaving ? 'Salvando…' : 'Salvar'}
+                        {isSaving ? <Save size={14} /> : savedToast ? <CheckCircle2 size={14} /> : <Save size={14} />}
+                        {isSaving ? 'Salvando…' : savedToast ? 'Salvo!' : 'Salvar'}
                     </button>
                 </div>
             </div>
