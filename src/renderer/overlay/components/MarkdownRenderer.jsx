@@ -166,8 +166,10 @@ export const MarkdownRenderer = ({ text, selection, handleMouseEnter, handleClic
 
                 if (node.type === 'codeblock') {
                     return (
-                        <pre key={node.key} className="my-3">
-                            <code>{node.code}</code>
+                        <pre key={node.key} className="my-3 p-3 bg-black/40 rounded-lg border border-white/5 overflow-x-auto selection:bg-blue-500/30">
+                            <code className="text-gray-300">
+                                {wrapWords(node.code, { isBold: false, isItalic: false }, `${node.key}-content`)}
+                            </code>
                         </pre>
                     );
                 }
@@ -199,8 +201,8 @@ export const MarkdownRenderer = ({ text, selection, handleMouseEnter, handleClic
 
                             if (part.t === 'code') {
                                 return (
-                                    <code key={`${baseKey}-code`} className="mx-0.5">
-                                        {part.v}
+                                    <code key={`${baseKey}-code`} className="mx-0.5 bg-white/5 px-1.5 py-0.5 rounded text-blue-300 font-mono text-[13px] border border-white/5">
+                                        {wrapWords(part.v, { isBold: false, isItalic: false }, `${baseKey}-content`)}
                                     </code>
                                 );
                             }
