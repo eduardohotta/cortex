@@ -232,8 +232,17 @@ class LocalLLMService extends EventEmitter {
             contextSize: this.context.contextSize
         };
         try {
-            if (this.sequence && this.sequence.tokenMeter) {
-                status.usedTokens = this.sequence.tokenMeter.used;
+            // In node-llama-cpp v3, we can check tokens or sequence state
+            if (this.sequence) {
+                if (this.sequence.tokens) {
+                    status.usedTokens = this.sequence.tokens.length;
+                } else if (this.sequence.contextTokens) {
+                    status.usedTokens = this.sequence.contextTokens.length;
+                }
+                // Fallback: if we have a state
+                if (!status.usedTokens && this.sequence.state) {
+                    status.usedTokens = this.sequence.state.tokens?.length || 0;
+                }
             }
         } catch (e) { }
         this.emit('model:status', status);

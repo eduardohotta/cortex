@@ -421,7 +421,7 @@ export default function FloatingRemote({ standalone = false }) {
                             "w-8 h-8 rounded-lg border flex items-center justify-center transition-all",
                             isStealth
                                 ? "bg-purple-500/20 border-purple-500/40 text-purple-400"
-                                : "bg-white/[0.05] border-white/12 text-gray-500 hover:text-white"
+                                : "bg-white/[0.05] border-white/12 text-red-500 hover:text-white"
                         )}
                         title="Stealth Mode (Anti-Print)"
                     >

@@ -131,6 +131,8 @@ function registerLLMHandlers(services) {
             console.log('📍 RESPONSE STYLE:', profile.responseStyle || 'default (short)');
             console.log('📍 INITIATIVE:', profile.initiativeLevel || 'default (minimal)');
             console.log('📍 PROMPT LENGTH:', mainPrompt.length);
+            console.log('📍 CONTEXT LENGTH:', (profile.additionalContext || '').length);
+            console.log('📍 HISTORY TURNS:', history.length);
             console.log('='.repeat(50));
             console.log('📍 PROFILE DATA:', JSON.stringify(profile, null, 2));
             console.log('📍 PROVIDER:', provider);
