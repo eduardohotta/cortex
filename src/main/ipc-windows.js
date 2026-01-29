@@ -12,14 +12,21 @@ function registerWindowHandlers(services) {
         handleAppAction(payload.action, payload.data)
     );
 
-    ipcMain.handle('overlay:show', () => {
-        getOverlayWindow()?.show();
-        getMainWindow()?.webContents.send('overlay:state-changed', true);
+    ipcMain.handle('overlay:show', (e) => {
+        const w = BrowserWindow.fromWebContents(e.sender);
+        console.log(`[IPC-Windows] Show requested for window: ${w?.getTitle() || 'Unknown'}`);
+        w?.show();
+        if (w === getOverlayWindow()) {
+            getMainWindow()?.webContents.send('overlay:state-changed', true);
+        }
     });
 
-    ipcMain.handle('overlay:hide', () => {
-        getOverlayWindow()?.hide();
-        getMainWindow()?.webContents.send('overlay:state-changed', false);
+    ipcMain.handle('overlay:hide', (e) => {
+        const w = BrowserWindow.fromWebContents(e.sender);
+        console.log(`[IPC-Windows] Hide requested for window: ${w?.getTitle() || 'Unknown'}`);
+        // Never hide the remote bar via this generic handler to prevent accidental lockout
+        if (w === getOverlayWindow()) return;
+        w?.hide();
     });
 
     ipcMain.handle('overlay:toggleStealth', () => toggleStealthMode());

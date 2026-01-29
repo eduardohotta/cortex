@@ -12,6 +12,9 @@ let windows = {
 };
 
 let isStealthMode = true;
+
+// Track window readiness to prevent early hide/show issues
+const windowReadyFlags = new Set();
 const PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload.js');
 const DIST_PATH = path.join(__dirname, '..', '..', 'dist', 'renderer');
 
@@ -21,6 +24,16 @@ const DIST_PATH = path.join(__dirname, '..', '..', 'dist', 'renderer');
 function configureWindow(win, stealth = false) {
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setContentProtection(stealth || isStealthMode);
+
+    // Add crash logging
+    win.webContents.on('render-process-gone', (event, details) => {
+        console.error(`[Windows] Render process gone for ${win.getTitle() || 'Unknown'}:`, details);
+    });
+
+    win.webContents.on('unresponsive', () => {
+        console.warn(`[Windows] Window became unresponsive: ${win.getTitle() || 'Unknown'}`);
+    });
+
     return win;
 }
 
@@ -40,6 +53,7 @@ function createMainWindow() {
     windows.main.loadFile(path.join(DIST_PATH, 'dashboard', 'index.html'));
 
     windows.main.on('closed', () => {
+        console.log('[Windows] Main window closed');
         windows.main = null;
         checkAppQuit();
     });
@@ -109,6 +123,7 @@ function createRemoteWindow() {
     configureWindow(windows.remote);
 
     windows.remote.on('closed', () => {
+        console.log('[Windows] Remote window closed');
         windows.remote = null;
         checkAppQuit();
     });
@@ -141,6 +156,11 @@ function createTranscriptionWindow() {
     const overlayPath = path.join(DIST_PATH, 'overlay', 'index.html');
     windows.transcription.loadFile(overlayPath, { hash: 'transcription' });
     configureWindow(windows.transcription);
+
+    windows.transcription.on('closed', () => {
+        console.log('[Windows] Transcription window closed');
+        windows.transcription = null;
+    });
 }
 
 function createResponseWindow() {
@@ -170,6 +190,11 @@ function createResponseWindow() {
     const overlayPath = path.join(DIST_PATH, 'overlay', 'index.html');
     windows.response.loadFile(overlayPath, { hash: 'response' });
     configureWindow(windows.response);
+
+    windows.response.on('closed', () => {
+        console.log('[Windows] Response window closed');
+        windows.response = null;
+    });
 }
 
 function toggleStealthMode() {
@@ -192,7 +217,9 @@ function broadcastToWindows(channel, data) {
 }
 
 function checkAppQuit() {
+    // Only quit if BOTH main and remote are gone
     if (!windows.main && !windows.remote) {
+        console.log('[Windows] All primary windows closed, quitting app...');
         require('electron').app.quit();
     }
 }

@@ -42,6 +42,7 @@ export function applySettingsToUI() {
     elements.sttProvider.value = s.sttProvider || 'groq';
     elements.audioSource.value = s.audioSource || 'system';
     elements.language.value = s.language || 'auto';
+    elements.whisperInitialPrompt.value = s.whisperInitialPrompt || '';
 }
 
 /**
@@ -58,7 +59,8 @@ export async function saveAllSettings() {
         hotkeyAsk: elements.hotkeyAsk.value,
         sttProvider: elements.sttProvider.value,
         audioSource: elements.audioSource.value,
-        language: elements.language.value
+        language: elements.language.value,
+        whisperInitialPrompt: elements.whisperInitialPrompt.value
     };
 
     console.log('[Settings] Saving:', settings);

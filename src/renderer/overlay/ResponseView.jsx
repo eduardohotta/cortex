@@ -5,6 +5,19 @@ import { MessageItem } from './components/MessageItem';
 import clsx from 'clsx';
 import './markdown.css';
 
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError(error) { return { hasError: true }; }
+    componentDidCatch(error, errorInfo) { console.error('ResponseView Error:', error, errorInfo); }
+    render() {
+        if (this.state.hasError) return <div className="p-4 text-red-500 text-xs font-bold bg-red-500/10 rounded-lg">Erro ao renderizar conteúdo.</div>;
+        return this.props.children;
+    }
+}
+
 export default function ResponseView() {
     const [history, setHistory] = useState([]);
     const [status, setStatus] = useState('idle');
@@ -433,12 +446,13 @@ export default function ResponseView() {
 
                 <div className="flex flex-col gap-1 pb-4">
                     {history.map((msg) => (
-                        <MessageItem
-                            key={msg.id}
-                            message={msg}
-                            onWordClick={handleWordClick}
-                            hotkey={hotkeyExplain}
-                        />
+                        <ErrorBoundary key={msg.id}>
+                            <MessageItem
+                                message={msg}
+                                onWordClick={handleWordClick}
+                                hotkey={hotkeyExplain}
+                            />
+                        </ErrorBoundary>
                     ))}
                 </div>
 

@@ -1,14 +1,67 @@
+'use strict';
+
 const { contextBridge, ipcRenderer } = require('electron');
 
 /**
- * Secure IPC bridge between renderer and main process
+ * Preload seguro:
+ * - Não expõe ipcRenderer diretamente (nem event objects).
+ * - Wrappers fixos por canal (sem permitir canal arbitrário vindo do renderer).
+ * - Sanitização simples de parâmetros.
+ * - openExternal vai para o main (o main deve validar allowlist de protocolos/domínios).
  */
-// Extract overlay view from command line arguments (set via additionalArguments in windows.js)
-const overlayViewArg = process.argv.find(arg => arg.startsWith('--view='));
-const overlayView = overlayViewArg ? overlayViewArg.split('=')[1] : null;
 
-contextBridge.exposeInMainWorld('electronAPI', {
-    // Returns the overlay view type for this window (remote, transcription, response)
+// --- overlay view (via additionalArguments: --view=response|transcription|remote) ---
+const overlayViewArg = process.argv.find(arg => typeof arg === 'string' && arg.startsWith('--view='));
+const rawView = overlayViewArg ? overlayViewArg.split('=').slice(1).join('=') : null;
+
+const allowedViews = new Set(['remote', 'transcription', 'response']);
+const overlayView = (() => {
+    if (!rawView) return null;
+    const v = decodeURIComponent(String(rawView)).trim();
+    return allowedViews.has(v) ? v : null;
+})();
+
+// --- helpers ---
+const isFn = (v) => typeof v === 'function';
+
+const safeCb = (cb) => {
+    if (!isFn(cb)) return () => { };
+    return cb;
+};
+
+/**
+ * Wrapper seguro de eventos:
+ * - não repassa o "event" do Electron para o renderer
+ * - permite unsubscribe
+ * - mantém uma assinatura consistente
+ *
+ * Isso segue a recomendação do Electron de não expor handlers brutos. [web:292]
+ */
+const on = (channel, callback) => {
+    const cb = safeCb(callback);
+    const handler = (_event, ...args) => cb(...args);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+};
+
+const once = (channel, callback) => {
+    const cb = safeCb(callback);
+    const handler = (_event, ...args) => cb(...args);
+    ipcRenderer.once(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+};
+
+// freeze profundo para dificultar mutação acidental no renderer
+const deepFreeze = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+    Object.freeze(obj);
+    for (const key of Object.keys(obj)) deepFreeze(obj[key]);
+    return obj;
+};
+
+// --- API exposta ---
+const api = {
+    // view dessa janela overlay
     getOverlayView: () => Promise.resolve(overlayView),
 
     overlay: {
@@ -16,70 +69,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
         hide: () => ipcRenderer.invoke('overlay:hide'),
         toggle: () => ipcRenderer.invoke('overlay:toggle'),
         toggleStealth: () => ipcRenderer.invoke('overlay:toggleStealth'),
+
         setResponse: (data) => ipcRenderer.invoke('overlay:setResponse', data),
         setQuestion: (data) => ipcRenderer.invoke('overlay:setQuestion', data),
-        onUpdateResponse: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('update-response', l);
-            return () => ipcRenderer.removeListener('update-response', l);
-        },
-        onUpdateQuestion: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('update-question', l);
-            return () => ipcRenderer.removeListener('update-question', l);
-        },
-        onCopyResponse: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('copy-response', l);
-            return () => ipcRenderer.removeListener('copy-response', l);
-        },
-        onStateChanged: (callback) => {
-            const l = (_, isVisible) => callback(isVisible);
-            ipcRenderer.on('overlay:state-changed', l);
-            return () => ipcRenderer.removeListener('overlay:state-changed', l);
-        },
-        onStealthChanged: (callback) => {
-            const l = (_, isStealth) => callback(isStealth);
-            ipcRenderer.on('overlay:stealth-changed', l);
-            return () => ipcRenderer.removeListener('overlay:stealth-changed', l);
-        },
-        setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', ignore)
+
+        onUpdateResponse: (cb) => on('update-response', (data) => safeCb(cb)(data)),
+        onUpdateQuestion: (cb) => on('update-question', (data) => safeCb(cb)(data)),
+        onCopyResponse: (cb) => on('copy-response', () => safeCb(cb)()),
+
+        onStateChanged: (cb) => on('overlay:state-changed', (isVisible) => safeCb(cb)(!!isVisible)),
+        onStealthChanged: (cb) => on('overlay:stealth-changed', (isStealth) => safeCb(cb)(!!isStealth)),
+
+        setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', !!ignore)
     },
 
     app: {
         panic: () => ipcRenderer.invoke('app:panic'),
         getVersion: () => ipcRenderer.invoke('app:getVersion'),
+
         minimize: () => ipcRenderer.invoke('window:minimize'),
         close: () => ipcRenderer.invoke('window:close'),
         toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+
         showDashboard: () => ipcRenderer.invoke('app:show-dashboard'),
-        move: (x, y) => ipcRenderer.send('window:move', { x, y }),
-        onHotkeyRecord: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('hotkey:record', l);
-            return () => ipcRenderer.removeListener('hotkey:record', l);
-        },
-        onHotkeyAsk: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('hotkey:ask', l);
-            return () => ipcRenderer.removeListener('hotkey:ask', l);
-        },
-        onStateUpdate: (callback) => {
-            const l = (_, state) => callback(state);
-            ipcRenderer.on('app:state-update', l);
-            return () => ipcRenderer.removeListener('app:state-update', l);
-        },
-        onProfilesUpdated: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('profiles:updated', l);
-            return () => ipcRenderer.removeListener('profiles:updated', l);
-        },
-        onCudaFallback: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('llm:cuda-fallback', l);
-            return () => ipcRenderer.removeListener('llm:cuda-fallback', l);
-        },
-        openExternal: (url) => require('electron').shell.openExternal(url),
+
+        move: (x, y) => ipcRenderer.send('window:move', { x: Number(x), y: Number(y) }),
+
+        onHotkeyRecord: (cb) => on('hotkey:record', () => safeCb(cb)()),
+        onHotkeyAsk: (cb) => on('hotkey:ask', () => safeCb(cb)()),
+
+        onStateUpdate: (cb) => on('app:state-update', (state) => safeCb(cb)(state)),
+        onProfilesUpdated: (cb) => on('profiles:updated', () => safeCb(cb)()),
+        onCudaFallback: (cb) => on('llm:cuda-fallback', (data) => safeCb(cb)(data)),
+
+        /**
+         * IMPORTANTE:
+         * Não chame shell.openExternal aqui no preload.
+         * Encaminhe para o main e valide lá (http/https allowlist etc.). [web:298][web:292]
+         */
+        openExternal: (url) => ipcRenderer.invoke('app:openExternal', String(url ?? '')),
+
         sendAction: (data) => ipcRenderer.send('app:action', data)
     },
 
@@ -87,89 +116,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getDevices: () => ipcRenderer.invoke('audio:getDevices'),
         startCapture: (deviceId, sttProvider) => ipcRenderer.invoke('audio:startCapture', deviceId, sttProvider),
         stopCapture: () => ipcRenderer.invoke('audio:stopCapture'),
-        onAudioData: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('audio:data', l);
-            return () => ipcRenderer.removeListener('audio:data', l);
-        },
-        onVolume: (callback) => {
-            const l = (_, volume) => callback(volume);
-            ipcRenderer.on('audio:volume', l);
-            return () => ipcRenderer.removeListener('audio:volume', l);
-        }
+        onAudioData: (cb) => on('audio:data', (data) => safeCb(cb)(data)),
+        onVolume: (cb) => on('audio:volume', (volume) => safeCb(cb)(volume))
     },
 
     transcription: {
         start: (config) => ipcRenderer.invoke('transcription:start', config),
         stop: () => ipcRenderer.invoke('transcription:stop'),
-        onTranscript: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('transcription:result', l);
-            return () => ipcRenderer.removeListener('transcription:result', l);
-        },
-        onDownloadProgress: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('transcription:download-progress', l);
-            return () => ipcRenderer.removeListener('transcription:download-progress', l);
-        }
+        onTranscript: (cb) => on('transcription:result', (data) => safeCb(cb)(data)),
+        onDownloadProgress: (cb) => on('transcription:download-progress', (data) => safeCb(cb)(data))
     },
 
     llm: {
-        generate: (prompt, systemPrompt) => ipcRenderer.invoke('llm:generate', prompt, systemPrompt),
+        generate: (prompt, systemPrompt) =>
+            ipcRenderer.invoke('llm:generate', String(prompt ?? ''), systemPrompt == null ? undefined : String(systemPrompt)),
         processAsk: (data) => ipcRenderer.invoke('llm:process-ask', data),
         stopGeneration: () => ipcRenderer.invoke('llm:stop-generation'),
-        testKey: (apiKey) => ipcRenderer.invoke('llm:testKey', apiKey),
-        onResponseStart: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('llm:response-start', l);
-            return () => ipcRenderer.removeListener('llm:response-start', l);
-        },
-        onResponseChunk: (callback) => {
-            const l = (_, chunk) => callback(chunk);
-            ipcRenderer.on('llm:response-chunk', l);
-            return () => ipcRenderer.removeListener('llm:response-chunk', l);
-        },
-        onResponseEnd: (callback) => {
-            const l = () => callback();
-            ipcRenderer.on('llm:response-end', l);
-            return () => ipcRenderer.removeListener('llm:response-end', l);
-        },
-        onKeyActive: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('llm:keyActive', l);
-            return () => ipcRenderer.removeListener('llm:keyActive', l);
-        },
-        onKeyFailed: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('llm:keyFailed', l);
-            return () => ipcRenderer.removeListener('llm:keyFailed', l);
-        },
-        onQuotaExceeded: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('llm:quotaExceeded', l);
-            return () => ipcRenderer.removeListener('llm:quotaExceeded', l);
-        },
-        onError: (callback) => {
-            const l = (_, msg) => callback(msg);
-            ipcRenderer.on('llm:error', l);
-            return () => ipcRenderer.removeListener('llm:error', l);
-        }
+        testKey: (apiKey) => ipcRenderer.invoke('llm:testKey', String(apiKey ?? '')),
+
+        onResponseStart: (cb) => on('llm:response-start', () => safeCb(cb)()),
+        onResponseChunk: (cb) => on('llm:response-chunk', (chunk) => safeCb(cb)(chunk)),
+        onResponseEnd: (cb) => on('llm:response-end', () => safeCb(cb)()),
+
+        onKeyActive: (cb) => on('llm:keyActive', (data) => safeCb(cb)(data)),
+        onKeyFailed: (cb) => on('llm:keyFailed', (data) => safeCb(cb)(data)),
+        onQuotaExceeded: (cb) => on('llm:quotaExceeded', (data) => safeCb(cb)(data)),
+        onError: (cb) => on('llm:error', (msg) => safeCb(cb)(msg)),
+
+        // opcional (às vezes ajuda): eventos one-shot
+        onceResponseEnd: (cb) => once('llm:response-end', () => safeCb(cb)())
     },
 
     settings: {
         get: (key, provider) => ipcRenderer.invoke('settings:get', key, provider),
         set: (key, value, provider) => ipcRenderer.invoke('settings:set', key, value, provider),
         getAll: (provider) => ipcRenderer.invoke('settings:getAll', provider),
+
         saveProfile: (name, config) => ipcRenderer.invoke('settings:saveProfile', name, config),
         loadProfile: (name) => ipcRenderer.invoke('settings:loadProfile', name),
         getProfiles: () => ipcRenderer.invoke('settings:getProfiles'),
         deleteProfile: (name) => ipcRenderer.invoke('settings:deleteProfile', name),
+
         refreshShortcuts: () => ipcRenderer.invoke('settings:refreshShortcuts'),
-        onSettingsChanged: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('settings:changed', l);
-            return () => ipcRenderer.removeListener('settings:changed', l);
-        }
+
+        onSettingsChanged: (cb) => on('settings:changed', (data) => safeCb(cb)(data))
     },
 
     model: {
@@ -177,21 +167,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         delete: (filename) => ipcRenderer.invoke('model:delete', filename),
         download: (config) => ipcRenderer.invoke('model:download', config),
         cancel: (filename) => ipcRenderer.invoke('model:cancel', filename),
-        onProgress: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('model:progress', l);
-            return () => ipcRenderer.removeListener('model:progress', l);
-        },
-        onUpdated: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('model:updated', l);
-            return () => ipcRenderer.removeListener('model:updated', l);
-        },
-        onStatus: (callback) => {
-            const l = (_, data) => callback(data);
-            ipcRenderer.on('model:status', l);
-            return () => ipcRenderer.removeListener('model:status', l);
-        }
+
+        onProgress: (cb) => on('model:progress', (data) => safeCb(cb)(data)),
+        onUpdated: (cb) => on('model:updated', (data) => safeCb(cb)(data)),
+        onStatus: (cb) => on('model:status', (data) => safeCb(cb)(data))
     },
 
     hf: {
@@ -200,4 +179,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getRecommended: () => ipcRenderer.invoke('hf:getRecommended'),
         getBestFile: (repoId) => ipcRenderer.invoke('hf:getBestFile', repoId)
     }
-});
+};
+
+contextBridge.exposeInMainWorld('electronAPI', deepFreeze(api));

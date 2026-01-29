@@ -43,7 +43,11 @@ function registerLLMHandlers(services) {
     // broadcastToWindows, broadcastState, isGenerating (global/outer scope)
 
     ipcMain.handle('llm:process-ask', async (_, { text, historyOverride } = {}) => {
-        if (isGenerating) return null;
+        console.log('[IPC-LLM] Processing ask request. isGenerating:', isGenerating);
+        if (isGenerating) {
+            console.warn('[IPC-LLM] Already generating, ignoring request');
+            return null;
+        }
         isGenerating = true;
 
         let fullResponse = '';
@@ -135,6 +139,18 @@ function registerLLMHandlers(services) {
             console.log('='.repeat(50) + '\n');
 
             broadcastToWindows('llm:response-start');
+            try {
+                const { windows } = require('./windows');
+                if (windows.response && !windows.response.isDestroyed()) {
+                    console.log('[IPC-LLM] Auto-showing response window');
+                    windows.response.show();
+                    windows.response.focus();
+                } else {
+                    console.warn('[IPC-LLM] Response window not available for auto-show');
+                }
+            } catch (err) {
+                console.error('[IPC-LLM] Failed to show response window:', err);
+            }
 
             // Aguarda finalização por eventos (complete/error/aborted)
             const response = await new Promise((resolve, reject) => {
@@ -218,6 +234,15 @@ function registerLLMHandlers(services) {
     ============================ */
     ipcMain.handle('llm:generate', async (_, prompt, systemPromptOverride) => {
         broadcastToWindows('llm:response-start');
+        try {
+            const { windows } = require('./windows');
+            if (windows.response && !windows.response.isDestroyed()) {
+                console.log('[IPC-LLM] Auto-showing response window (secondary)');
+                windows.response.show();
+            }
+        } catch (err) {
+            console.error('[IPC-LLM] Failed to show response window (secondary):', err);
+        }
 
         if (systemPromptOverride) {
             const result = await llmConnector.generateDefinition(prompt, systemPromptOverride);

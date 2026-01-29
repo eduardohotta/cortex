@@ -61,6 +61,22 @@ export function AudioSettings({ localSettings, handleChange, audioDevices }) {
                                         <option value="cpu">CPU (Modo Seguro)</option>
                                     </select>
                                 </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-3 text-gray-500 pl-1">
+                                        <div className="w-1 h-1 rounded-full bg-blue-500" />
+                                        <label className="text-[9px] font-black uppercase tracking-widest">Prompt Inicial (Melhorar Precisão)</label>
+                                    </div>
+                                    <textarea
+                                        value={localSettings.whisperInitialPrompt || ''}
+                                        onChange={(e) => handleChange('whisperInitialPrompt', e.target.value)}
+                                        placeholder="Ex: Nomes técnicos, siglas, contexto da entrevista..."
+                                        className="w-full bg-blue-900/5 border border-blue-500/10 rounded-2xl px-6 py-4 text-xs text-gray-300 placeholder:text-gray-700 min-h-[100px] resize-none focus:border-blue-500/30 transition-all outline-none no-drag"
+                                    />
+                                    <p className="text-[8px] text-gray-600 font-bold uppercase tracking-wider pl-1">
+                                        Guie o Whisper com palavras-chave ou contexto específico.
+                                    </p>
+                                </div>
                             </div>
                         )}
                     </div>

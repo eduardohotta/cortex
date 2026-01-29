@@ -15,7 +15,8 @@ export const state = {
         hotkeyRecord: 'Alt+R',
         hotkeyAsk: 'Alt+A',
         sttProvider: 'groq',
-        systemPrompt: ''
+        systemPrompt: '',
+        whisperInitialPrompt: ''
     }
 };
 
@@ -47,6 +48,7 @@ export const elements = {
     audioSource: null,
     language: null,
     sttProvider: null,
+    whisperInitialPrompt: null,
 
     // Hotkeys Tab
     hotkeyRecord: null,
@@ -96,6 +98,7 @@ export function initElements() {
     elements.audioSource = document.getElementById('audio-source');
     elements.language = document.getElementById('language');
     elements.sttProvider = document.getElementById('stt-provider');
+    elements.whisperInitialPrompt = document.getElementById('whisper-initial-prompt');
 
     elements.hotkeyRecord = document.getElementById('hotkey-record');
     elements.hotkeyAsk = document.getElementById('hotkey-ask');

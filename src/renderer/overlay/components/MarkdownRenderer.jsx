@@ -27,10 +27,10 @@ export const MarkdownRenderer = ({ text, selection, handleMouseEnter, handleClic
             let lastIndex = 0;
 
             for (const match of s.matchAll(re)) {
+                const token = match[0];
                 const idx = match.index ?? 0;
                 if (idx > lastIndex) parts.push({ t: 'text', v: s.slice(lastIndex, idx) });
 
-                const token = match;
                 if (token.startsWith('`') && token.endsWith('`')) parts.push({ t: 'code', v: token.slice(1, -1) });
                 else if (token.startsWith('**') && token.endsWith('**')) parts.push({ t: 'strong', v: token.slice(2, -2) });
                 else if (token.startsWith('__') && token.endsWith('__')) parts.push({ t: 'strong', v: token.slice(2, -2) });

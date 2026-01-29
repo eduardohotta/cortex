@@ -33,7 +33,8 @@ class SpeechRecognitionService extends EventEmitter {
             apiKey: '',
             language: 'pt-BR', // AUTO | pt-BR | en-US
             model: 'whisper-large-v3-turbo',
-            whisperDevice: 'auto'
+            whisperDevice: 'auto',
+            whisperInitialPrompt: ''
         };
 
         this.groqClient = null;
@@ -244,6 +245,10 @@ class SpeechRecognitionService extends EventEmitter {
         }
 
         args.push('--device', this.config.whisperDevice || 'auto');
+
+        if (this.config.whisperInitialPrompt) {
+            args.push('--initial_prompt', this.config.whisperInitialPrompt);
+        }
 
         console.log('[Faster-Whisper] Starting:', args.join(' '));
 

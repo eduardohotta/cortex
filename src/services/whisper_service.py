@@ -55,7 +55,8 @@ class WhisperService:
         log_prob_threshold=-1.0,
         no_speech_threshold=0.6,
         compression_ratio_threshold=2.4,
-        merge_gap_s=0.8
+        merge_gap_s=0.8,
+        initial_prompt=None
     ):
         self.model_size = model_size
         self.device = device
@@ -77,6 +78,7 @@ class WhisperService:
         self.compression_ratio_threshold = compression_ratio_threshold
 
         self.merge_gap_s = float(merge_gap_s)
+        self.initial_prompt = initial_prompt
 
         self.model = None
         self.audio_queue = queue.Queue(maxsize=int(queue_maxsize))
@@ -145,7 +147,8 @@ class WhisperService:
                     vad_filter=self.vad_filter,
                     vad_parameters=dict(min_silence_duration_ms=self.vad_min_silence_duration_ms),
                     task="transcribe",
-                    condition_on_previous_text=self.condition_on_previous_text
+                    condition_on_previous_text=self.condition_on_previous_text,
+                    initial_prompt=self.initial_prompt
                 )
 
                 if self.log_prob_threshold is not None:
@@ -347,6 +350,7 @@ def main():
     parser.add_argument("--queue_maxsize", type=int, default=32, help="Max queued audio blocks")
     parser.add_argument("--capture_chunk_seconds", type=float, default=3.0, help="Chunk size for capture mode (seconds)")
     parser.add_argument("--stdin_chunk_seconds", type=float, default=1.2, help="Chunk size for stdin mode (seconds)")
+    parser.add_argument("--initial_prompt", default=None, help="Initial prompt for transcription")
 
     args = parser.parse_args()
 
@@ -361,7 +365,8 @@ def main():
         compute_type=args.compute_type,
         queue_maxsize=args.queue_maxsize,
         capture_chunk_seconds=args.capture_chunk_seconds,
-        stdin_chunk_seconds=args.stdin_chunk_seconds
+        stdin_chunk_seconds=args.stdin_chunk_seconds,
+        initial_prompt=args.initial_prompt
     )
 
     def _handle_exit(sig, frame):
