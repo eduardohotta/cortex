@@ -45,8 +45,14 @@ export default function SettingsModal({ isOpen, onClose }) {
                 setModelStatus(prev => ({ ...prev, ...data }));
             });
 
+            // Listen for settings changes to keep localSettings in sync
+            const cleanupSettings = window.electronAPI.settings.onSettingsChanged((data) => {
+                setLocalSettings(prev => ({ ...prev, [data.key]: data.value }));
+            });
+
             return () => {
                 if (cleanupStatus) cleanupStatus();
+                if (cleanupSettings) cleanupSettings();
             };
         }
     }, [isOpen]);

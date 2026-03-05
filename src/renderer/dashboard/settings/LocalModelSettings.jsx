@@ -1,8 +1,45 @@
-import React from 'react';
-import { HardDrive } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { HardDrive, Play, Square, RefreshCw } from 'lucide-react';
 
 export function LocalModelSettings({ localSettings, handleChange, modelStatus, setIsModelHubOpen }) {
-    if (localSettings.llmProvider !== 'local') return null;
+    if (localSettings.llmProvider !== 'local' && localSettings.llmProvider !== 'ollama') return null;
+
+    const [serverStatus, setServerStatus] = useState({ running: false, starting: false, models: [] });
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        if (localSettings.llmProvider === 'ollama') {
+            checkStatus();
+            const interval = setInterval(checkStatus, 3000);
+            return () => clearInterval(interval);
+        }
+    }, [localSettings.llmProvider]);
+
+    const checkStatus = async () => {
+        try {
+            const status = await window.electronAPI.ollama.status();
+            setServerStatus(status);
+        } catch (err) {
+            setServerStatus({ running: false, starting: false, models: [] });
+        }
+    };
+
+    const handleSelectModel = (modelName) => {
+        handleChange('localModel', modelName);
+        handleChange('llmModel', modelName);
+    };
+
+    // Modelos manuais para Ollama (caso não consiga detectar)
+    const commonOllamaModels = [
+        { name: 'qwen3.5:9b', size: 5600000000 },
+        { name: 'qwen3.5:32b', size: 20000000000 },
+        { name: 'llama3.1:8b', size: 4700000000 },
+        { name: 'llama3.3:70b', size: 40000000000 }
+    ];
+
+    const displayedModels = serverStatus.models && serverStatus.models.length > 0 
+        ? serverStatus.models 
+        : commonOllamaModels;
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-top-4">
@@ -12,7 +49,9 @@ export function LocalModelSettings({ localSettings, handleChange, modelStatus, s
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <HardDrive className="text-purple-400" size={20} />
-                        <h4 className="text-xs font-black text-purple-400 uppercase tracking-widest">Motor Offline Ativo</h4>
+                        <h4 className="text-xs font-black text-purple-400 uppercase tracking-widest">
+                            {localSettings.llmProvider === 'ollama' ? 'Ollama Local' : 'Motor Offline Ativo'}
+                        </h4>
                     </div>
                     <button
                         onClick={() => setIsModelHubOpen(true)}
@@ -33,6 +72,68 @@ export function LocalModelSettings({ localSettings, handleChange, modelStatus, s
                         </div>
                     )}
                 </div>
+
+                {/* Controles do Ollama */}
+                {localSettings.llmProvider === 'ollama' && (
+                    <div className="space-y-4">
+                        {/* Status */}
+                        <div className="flex items-center justify-between p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-2 h-2 rounded-full ${serverStatus.running ? 'bg-green-500' : 'bg-gray-500'} animate-pulse`} />
+                                <span className="text-[10px] text-purple-300 font-mono">
+                                    {serverStatus.running ? 'Ollama rodando' : 'Aguardando Ollama...'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Lista de Modelos */}
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Modelos Disponíveis {serverStatus.running ? '(Ollama rodando)' : '(instale no Ollama)'}
+                            </label>
+                            <div className="grid gap-2">
+                                {displayedModels.map((model, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => handleSelectModel(model.name)}
+                                        className={`p-3 rounded-xl border text-left transition-all ${
+                                            localSettings.localModel === model.name
+                                                ? 'bg-purple-500/20 border-purple-500 text-white'
+                                                : 'bg-white/[0.02] border-white/5 text-gray-400 hover:border-purple-500/30'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs font-mono font-bold">{model.name}</span>
+                                            <span className="text-[9px] text-gray-500">
+                                                {(model.size / 1024 / 1024 / 1024).toFixed(1)} GB
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                            {!serverStatus.running && (
+                                <p className="text-[9px] text-yellow-500">
+                                    ⚠️ Ollama não detectado. Instale em ollama.com e rode `ollama pull {localSettings.localModel || 'qwen3.5:9b'}`
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Modelo Atual */}
+                        <div className="p-4 bg-black/40 rounded-xl border border-white/5">
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest">Modelo Selecionado</span>
+                            <div className="flex items-center justify-between mt-2">
+                                <span className="text-xs font-mono text-white">
+                                    {localSettings.localModel || 'Nenhum selecionado'}
+                                </span>
+                                {localSettings.localModel && (
+                                    <span className="px-2 py-1 rounded bg-purple-500/20 text-[8px] text-purple-400 font-mono">
+                                        OLLAMA
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 2. ESTADO DO MODELO (Monitoramento) */}

@@ -88,7 +88,8 @@ export function LLMSettings({ localSettings, handleChange, selectedProvider, set
         { id: 'openai', name: 'OpenAI GPT' },
         { id: 'anthropic', name: 'Anthropic Claude' },
         { id: 'groq', name: 'Groq LPU' },
-        { id: 'local', name: 'Local (Offline)' }
+        { id: 'local', name: 'Local (node-llama-cpp)' },
+        { id: 'ollama', name: 'Ollama (Local)' }
     ];
 
     return (
@@ -103,11 +104,14 @@ export function LLMSettings({ localSettings, handleChange, selectedProvider, set
                             onClick={() => {
                                 setSelectedProvider(p.id);
                                 handleChange('llmProvider', p.id);
-                                if (p.id !== 'local') {
+                                if (p.id !== 'local' && p.id !== 'ollama') {
                                     const models = getModelsForProvider(p.id);
                                     if (models.length > 0) {
                                         handleChange('llmModel', models[0].id);
                                     }
+                                } else if (p.id === 'ollama') {
+                                    // Para Ollama, usa o nome do modelo do Ollama
+                                    handleChange('llmModel', 'qwen3.5:9b');
                                 } else if (localSettings.localModel) {
                                     handleChange('llmModel', localSettings.localModel);
                                 }

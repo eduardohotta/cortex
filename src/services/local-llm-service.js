@@ -76,7 +76,7 @@ class LocalLLMService extends EventEmitter {
                 threads,
                 contextSize,
                 batchSize,
-                sequences: 3 // Higher sequences for safer cleanup
+                sequences: 3
             });
 
             this.activeModelPath = modelPath;
@@ -91,6 +91,29 @@ class LocalLLMService extends EventEmitter {
 
         } catch (err) {
             this.emit('error', err);
+            
+            // Detect architecture errors and provide helpful message
+            const errorMsg = err.message?.toLowerCase() || '';
+            if (errorMsg.includes('unknown model architecture') || errorMsg.includes('qwen35')) {
+                console.error(`
+[LocalLLM] ⚠️ MODELO INCOMPATÍVEL DETECTADO!
+
+O modelo Qwen3.5 não é suportado pela versão atual do node-llama-cpp.
+
+Soluções:
+1. Use modelos compatíveis: Llama 3.x, Mistral, Gemma, Phi-3, Qwen2
+2. Ou atualize: npm install node-llama-cpp@latest
+
+Modelos recomendados:
+- Llama-3.3-70B-Instruct (melhor qualidade)
+- Llama-3.1-8B-Instruct (mais rápido)
+- Mistral-Nemo-12B-Instruct
+- Gemma-2-9B-it
+- Qwen2-7B-Instruct (se quiser Qwen)
+`);
+                throw new Error(`Modelo incompatível: ${path.basename(modelPath)}. Use Llama 3.x, Mistral, Gemma ou Qwen2.`);
+            }
+            
             throw err;
         } finally {
             this.isLoading = false;
@@ -150,9 +173,11 @@ class LocalLLMService extends EventEmitter {
                 this.sequence = this.context.getSequence();
 
                 const { LlamaChatSession } = this.llamaCppModule;
+                
+                // API v3.17: systemPrompt agora é passado no construtor via options
                 this.session = new LlamaChatSession({
                     contextSequence: this.sequence,
-                    systemPrompt
+                    systemPrompt: systemPrompt || undefined
                 });
 
                 const temperature = options.temperature || 0.3;

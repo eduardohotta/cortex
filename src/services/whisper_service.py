@@ -46,17 +46,17 @@ class WhisperService:
         queue_maxsize=32,
         sample_rate=16000,
         capture_chunk_seconds=3.0,
-        stdin_chunk_seconds=1.2,
-        beam_size=10,
+        stdin_chunk_seconds=4.0,  # +contexto = muito melhor transcrição
+        beam_size=5,
         vad_filter=True,
-        vad_min_silence_duration_ms=300,
-        condition_on_previous_text=False,
-        temperature=0.0,
-        log_prob_threshold=-1.0,
+        vad_min_silence_duration_ms=400,  # +tempo = não corta frases
+        condition_on_previous_text=True,  # True = usa contexto anterior
+        temperature=0.0,  # 0 = mais preciso
+        log_prob_threshold=-1.0,  # mais restritivo = menos erro
         no_speech_threshold=0.6,
-        compression_ratio_threshold=2.4,
-        merge_gap_s=0.8,
-        initial_prompt=None
+        compression_ratio_threshold=2.5,
+        merge_gap_s=2.0,  # +generoso = frases completas
+        initial_prompt="Transcrição de entrevista em português brasileiro. Mantenha palavras técnicas, nomes próprios e números. Use pontuação adequada."
     ):
         self.model_size = model_size
         self.device = device
@@ -90,10 +90,39 @@ class WhisperService:
 
     def load_model(self):
         try:
+            # Auto-detect device if "auto"
+            if self.device == "auto":
+                try:
+                    import ctranslate2
+                    cuda_count = ctranslate2.get_cuda_device_count()
+                    if cuda_count > 0:
+                        self.device = "cuda"
+                        # Auto-select compute_type for CUDA
+                        if self.compute_type == "auto":
+                            self.compute_type = "float16"
+                        print(json.dumps({
+                            "status": "using_cuda",
+                            "cuda_devices": cuda_count,
+                            "compute_type": self.compute_type
+                        }), flush=True)
+                    else:
+                        self.device = "cpu"
+                        if self.compute_type == "auto":
+                            self.compute_type = "float32"
+                        print(json.dumps({
+                            "status": "using_cpu",
+                            "reason": "no_cuda_device"
+                        }), flush=True)
+                except ImportError:
+                    self.device = "cpu"
+                    if self.compute_type == "auto":
+                        self.compute_type = "float32"
+
             print(json.dumps({
                 "status": "loading_model",
                 "model": self.model_size,
-                "device": self.device
+                "device": self.device,
+                "compute_type": self.compute_type
             }), flush=True)
 
             self.model = WhisperModel(
@@ -108,13 +137,51 @@ class WhisperService:
                 "warning": f"Model load failed on {self.device}: {error_msg}"
             }), flush=True)
 
-            if self.device in ("cuda", "auto"):
-                print(json.dumps({
-                    "status": "fallback_cpu",
-                    "message": "Falling back to CPU..."
-                }), flush=True)
+            # Tenta diferentes compute_types no CUDA antes de fallback para CPU
+            if self.device == "cuda":
+                # Tenta float32 no CUDA
                 try:
-                    self.device = "cpu"
+                    print(json.dumps({"status": "trying_cuda_float32"}), flush=True)
+                    self.compute_type = "float32"
+                    self.model = WhisperModel(
+                        self.model_size,
+                        device="cuda",
+                        compute_type="float32"
+                    )
+                    return True
+                except Exception as e32:
+                    print(json.dumps({"warning": f"CUDA float32 failed: {str(e32)}"}), flush=True)
+
+                # Tenta int8_float16 no CUDA
+                try:
+                    print(json.dumps({"status": "trying_cuda_int8"}), flush=True)
+                    self.compute_type = "int8_float16"
+                    self.model = WhisperModel(
+                        self.model_size,
+                        device="cuda",
+                        compute_type="int8_float16"
+                    )
+                    return True
+                except Exception as ei8:
+                    print(json.dumps({"warning": f"CUDA int8 failed: {str(ei8)}"}), flush=True)
+
+            # Fallback para CPU
+            print(json.dumps({
+                "status": "fallback_cpu",
+                "message": "Falling back to CPU..."
+            }), flush=True)
+            try:
+                self.device = "cpu"
+                self.compute_type = "float32"
+                self.model = WhisperModel(
+                    self.model_size,
+                    device="cpu",
+                    compute_type="float32"
+                )
+                return True
+            except Exception as cpu_e:
+                # Segunda tentativa com int8 se float32 falhar
+                try:
                     self.compute_type = "int8"
                     self.model = WhisperModel(
                         self.model_size,
@@ -122,9 +189,9 @@ class WhisperService:
                         compute_type="int8"
                     )
                     return True
-                except Exception as cpu_e:
+                except Exception as int8_e:
                     print(json.dumps({
-                        "error": f"CPU Fallback failed: {str(cpu_e)}"
+                        "error": f"CPU Fallback failed: {str(int8_e)}"
                     }), flush=True)
                     return False
 
@@ -190,11 +257,10 @@ class WhisperService:
     def transcribe_chunk(self, audio_data):
         segments, info = self._transcribe_with_fallback(audio_data)
 
+        # Filtros de hallucinations e repetições
         hallucinations = [
-            "Obrigado.", "Obrigado!", "Tchau.", "Tchau!",
-            "Obrigado por assistir.", "Legenda por",
-            "Amara.org", "Sous-titres", "Untertitel",
-            "subtitle", "caption"
+            "obrigado", "tchau", "obrigado por assistir", "legenda por",
+            "amara.org", "sous-titres", "untertitel", "subtitle", "caption"
         ]
 
         results = []
@@ -205,24 +271,46 @@ class WhisperService:
                 continue
 
             t_lower = text.lower()
-            if any(h.lower() in t_lower for h in hallucinations):
+
+            # Filtra hallucinations
+            if any(h in t_lower for h in hallucinations):
                 continue
 
-            if len(text) > 10 and text == self.last_text:
+            # Filtra repetições em loop
+            if " de uma " in t_lower and t_lower.count(" de uma ") > 2:
                 continue
 
-            if getattr(segment, "avg_logprob", 0.0) < -1.0:
+            # Filtra repetição exata do último texto (apenas se > 20 chars)
+            if len(text) > 20 and text == self.last_text:
                 continue
 
+            # Filtra baixa probabilidade
+            if getattr(segment, "avg_logprob", 0.0) < -1.5:
+                continue
+
+            # Merge de segmentos adjacentes - MELHORADO
             if results:
                 last = results[-1]
                 gap = float(segment.start) - float(last["end"])
 
-                if gap < self.merge_gap_s and not last["text"].endswith((".", "?", "!", ":")):
-                    last["text"] += " " + text
-                    last["end"] = float(segment.end)
-                    self.last_text = last["text"]
-                    continue
+                # Não faz merge se tiver pontuação final forte
+                last_stripped = last["text"].rstrip()
+                has_end_punct = last_stripped.endswith((".", "?", "!", ":"))
+                
+                # Merge se: gap pequeno E (sem pontuação OU frase incompleta)
+                if gap < self.merge_gap_s:
+                    # Não faz merge se tem pontuação final
+                    if not has_end_punct:
+                        last["text"] += " " + text
+                        last["end"] = float(segment.end)
+                        self.last_text = last["text"]
+                        continue
+                    # Faz merge se pontuação mas frase parece incompleta
+                    elif len(last_stripped) < 30 and not last_stripped.endswith("."):
+                        last["text"] += " " + text
+                        last["end"] = float(segment.end)
+                        self.last_text = last["text"]
+                        continue
 
             results.append({
                 "text": text,
@@ -341,15 +429,15 @@ class WhisperService:
 
 def main():
     parser = argparse.ArgumentParser(description="Faster-Whisper Transcription Service")
-    parser.add_argument("--model", default="base", help="Model size")
-    parser.add_argument("--language", default=None, help="Language code (e.g. pt, en)")
-    parser.add_argument("--device", default="cpu", help="Device to use (cpu, cuda, auto)")
-    parser.add_argument("--compute_type", default="int8", help="Compute type (e.g. int8, float16)")
+    parser.add_argument("--model", default="large-v3", help="Model size (use large-v3 for best accuracy)")
+    parser.add_argument("--language", default="pt", help="Language code (e.g. pt, en)")
+    parser.add_argument("--device", default="auto", help="Device to use (cpu, cuda, auto)")
+    parser.add_argument("--compute_type", default="auto", help="Compute type (auto, int8, float16, float32)")
     parser.add_argument("--device_id", type=int, default=None, help="Audio device ID for direct capture")
     parser.add_argument("--list_devices", action="store_true", help="List available audio devices")
     parser.add_argument("--queue_maxsize", type=int, default=32, help="Max queued audio blocks")
     parser.add_argument("--capture_chunk_seconds", type=float, default=3.0, help="Chunk size for capture mode (seconds)")
-    parser.add_argument("--stdin_chunk_seconds", type=float, default=1.2, help="Chunk size for stdin mode (seconds)")
+    parser.add_argument("--stdin_chunk_seconds", type=float, default=4.0, help="Chunk size for stdin mode (seconds)")
     parser.add_argument("--initial_prompt", default=None, help="Initial prompt for transcription")
 
     args = parser.parse_args()
@@ -358,11 +446,21 @@ def main():
         print(json.dumps(list_audio_devices()), flush=True)
         return
 
+    # Auto-detect compute_type based on device
+    compute_type = args.compute_type
+    if compute_type == "auto":
+        if args.device == "cpu":
+            compute_type = "float32"  # CPU: float32 é mais compatível
+        elif args.device == "cuda":
+            compute_type = "float16"  # CUDA: float16 é rápido
+        else:  # auto
+            compute_type = "float16"  # Tenta float16 primeiro, fallback no load_model
+
     service = WhisperService(
         model_size=args.model,
         language=args.language,
         device=args.device,
-        compute_type=args.compute_type,
+        compute_type=compute_type,
         queue_maxsize=args.queue_maxsize,
         capture_chunk_seconds=args.capture_chunk_seconds,
         stdin_chunk_seconds=args.stdin_chunk_seconds,

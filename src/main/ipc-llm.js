@@ -32,6 +32,21 @@ function registerLLMHandlers(services) {
             if (chunk) broadcastToWindows('llm:response-chunk', chunk);
         });
 
+        // Listen for settings changes to update connector config
+        ipcMain.on('settings:changed', (_, data) => {
+            if (data.key === 'localModel' || data.key === 'llmProvider' || data.key === 'llmModel') {
+                // Update connector's model reference for next generation
+                const provider = settingsManager.get('llmProvider');
+                const model = provider === 'local' 
+                    ? settingsManager.get('localModel') 
+                    : settingsManager.get('llmModel');
+                
+                llmConnector.model = model;
+                llmConnector.provider = provider;
+                console.log(`[IPC-LLM] Model updated: ${provider}/${model}`);
+            }
+        });
+
         modelEventsBound = true;
     }
 
@@ -327,6 +342,30 @@ function registerLLMHandlers(services) {
     ipcMain.handle('hf:files', (_, r) => huggingFace.getFiles(r));
     ipcMain.handle('hf:getRecommended', () => huggingFace.getRecommended());
     ipcMain.handle('hf:getBestFile', (_, r) => huggingFace.getBestFile(r));
+
+    /* ===========================
+       OLLAMA
+    ============================ */
+    ipcMain.handle('ollama:start', async () => {
+        const ollama = require('../services/ollama-connector');
+        ollama.startHealthCheck();
+        return { success: true };
+    });
+
+    ipcMain.handle('ollama:stop', () => {
+        const ollama = require('../services/ollama-connector');
+        ollama.stopHealthCheck();
+        return { success: true };
+    });
+
+    ipcMain.handle('ollama:status', async () => {
+        const ollama = require('../services/ollama-connector');
+        const health = await ollama.checkHealth();
+        return {
+            running: health.ready,
+            models: health.models || []
+        };
+    });
 }
 
 module.exports = { registerLLMHandlers };

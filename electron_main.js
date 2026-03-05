@@ -26,6 +26,7 @@ const QuestionClassifier = require('./src/services/question-classifier');
 const ContextManager = require('./src/services/context-manager');
 const LLMConnector = require('./src/services/llm-connector');
 const SettingsManager = require('./src/services/settings-manager');
+const ollama = require('./src/services/ollama-connector');
 
 // Import main process modules
 const { createMainWindow, createRemoteWindow, createTranscriptionWindow, createResponseWindow } = require('./src/main/windows');
@@ -70,6 +71,24 @@ app.whenReady().then(async () => {
   registerShortcuts();
   setupAudioPipeline();
 
+  // Auto-start Ollama health check if provider is ollama
+  try {
+    const provider = settingsManager.get('llmProvider');
+    const localModel = settingsManager.get('localModel');
+    console.log('[CORTEX] Current LLM provider:', provider);
+    console.log('[CORTEX] Local model:', localModel);
+    
+    if (provider === 'ollama') {
+      console.log('[CORTEX] Starting Ollama health check...');
+      ollama.startHealthCheck();
+      
+      // Set model name
+      ollama.model = localModel || 'qwen3.5:9b';
+    }
+  } catch (err) {
+    console.error('[CORTEX] Ollama init failed:', err);
+  }
+
   // Preload local LLM model if provider is local
   try {
     const provider = settingsManager.get('llmProvider');
@@ -95,11 +114,13 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   globalShortcut.unregisterAll();
+  ollama.stopHealthCheck();
   app.quit();
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  ollama.stopHealthCheck();
 });
 
 app.on('activate', () => {

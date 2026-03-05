@@ -24,14 +24,14 @@ class SpeechRecognitionService extends EventEmitter {
         this.audioBuffer = [];
         this.pendingAudio = [];
 
-        this.chunkDuration = 2000;
+        this.chunkDuration = 2500;  // Aumentado de 2000 para 2500ms - mais contexto
         this.lastChunkTime = 0;
 
         this.whisperReady = false;
 
         this.config = {
             apiKey: '',
-            language: 'pt-BR', // AUTO | pt-BR | en-US
+            language: 'pt-BR',
             model: 'whisper-large-v3-turbo',
             whisperDevice: 'auto',
             whisperInitialPrompt: ''

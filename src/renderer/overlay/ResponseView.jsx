@@ -322,6 +322,37 @@ export default function ResponseView() {
         setStatus('idle');
     };
 
+    const [inputText, setInputText] = useState('');
+
+    const handleSendText = async () => {
+        if (!inputText.trim() || status === 'processing' || status === 'streaming') return;
+
+        const cfg = configRef.current || {};
+        const assistantName = assistantNameRef.current;
+        const title = assistantName || cfg.mainResponseTitle || 'Insight';
+
+        nextTitleRef.current = title;
+        setStatus('processing');
+        setError(null);
+
+        try {
+            await window.electronAPI.llm.generate(inputText.trim());
+            setInputText('');
+        } catch (err) {
+            console.error('Text generate failed:', err);
+            setError(cfg.labelError || 'Erro');
+            setStatus('error');
+            activeMessageIdRef.current = null;
+        }
+    };
+
+    const handleInputKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendText();
+        }
+    };
+
     const handleWordClick = useCallback(async (phrase, e, isPhrase) => {
         const cfg = configRef.current || {};
 
@@ -457,6 +488,28 @@ export default function ResponseView() {
                 </div>
 
                 <div className="h-2" />
+            </div>
+
+            {/* Input de Texto (sempre visível) */}
+            <div className="flex-shrink-0 p-3 border-t border-white/10 bg-black/40">
+                <div className="flex gap-2">
+                    <textarea
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={handleInputKeyDown}
+                        placeholder="Digite sua pergunta... (Enter envia, Shift+Enter pula linha)"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 resize-none"
+                        rows={2}
+                        disabled={status === 'processing' || status === 'streaming'}
+                    />
+                    <button
+                        onClick={handleSendText}
+                        disabled={!inputText.trim() || status === 'processing' || status === 'streaming'}
+                        className="px-4 py-2 bg-purple-600 text-white text-[9px] font-black uppercase rounded-lg hover:bg-purple-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed self-end"
+                    >
+                        Enviar
+                    </button>
+                </div>
             </div>
 
             {history.length > 0 && (

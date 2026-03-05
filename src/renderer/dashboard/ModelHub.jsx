@@ -38,10 +38,17 @@ export function ModelHub({ isOpen, onClose }) {
             const cleanupUpdate = window.electronAPI.model.onUpdated((models) => {
                 setLocalModels(models);
             });
+            // Listen for settings changes to update current model
+            const cleanupSettings = window.electronAPI.settings.onSettingsChanged((data) => {
+                if (data.key === 'localModel') {
+                    setCurrentModel(data.value);
+                }
+            });
 
             return () => {
                 cleanupProgress && cleanupProgress();
                 cleanupUpdate && cleanupUpdate();
+                cleanupSettings && cleanupSettings();
             };
         }
     }, [isOpen]);

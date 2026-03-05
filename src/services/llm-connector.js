@@ -6,6 +6,7 @@
 const EventEmitter = require('events');
 const localLLM = require('./local-llm-service');
 const modelManager = require('./model-manager');
+const ollama = require('./ollama-connector');
 
 class LLMConnector extends EventEmitter {
     constructor() {
@@ -282,6 +283,8 @@ class LLMConnector extends EventEmitter {
                 return await this.generateGoogle(question, systemPrompt, apiKey, signal);
             case 'local':
                 return await this.generateLocal(question, systemPrompt, signal);
+            case 'ollama':
+                return await this.generateOllama(question, systemPrompt, signal);
             default:
                 throw new Error(`Unknown provider: ${this.provider}`);
         }
@@ -469,6 +472,58 @@ class LLMConnector extends EventEmitter {
                 return null;
             }
             console.error('Local LLM error:', err);
+            this.emit('error', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Generate using Ollama (Local)
+     */
+    async generateOllama(question, systemPrompt, signal) {
+        console.log('[Ollama] Starting generation...');
+
+        // Set model from config
+        ollama.model = this.model || 'qwen3.5:9b';
+
+        // Forward chunk events
+        const onChunk = (text) => {
+            if (text) {
+                this.emit('chunk', text);
+            }
+        };
+
+        ollama.on('chunk', onChunk);
+
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                ollama.off('chunk', onChunk);
+            });
+        }
+
+        try {
+            const response = await ollama.generateStream(
+                question,
+                systemPrompt,
+                {
+                    maxTokens: this.config.maxTokens,
+                    temperature: this.config.temperature,
+                    topP: this.config.topP
+                }
+            );
+
+            ollama.off('chunk', onChunk);
+
+            if (signal?.aborted) {
+                return null;
+            }
+
+            this.emit('complete', response);
+            return response;
+
+        } catch (err) {
+            ollama.off('chunk', onChunk);
+            console.error('[Ollama] Error:', err);
             this.emit('error', err);
             throw err;
         }

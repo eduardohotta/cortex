@@ -178,6 +178,12 @@ const api = {
         files: (repoId) => ipcRenderer.invoke('hf:files', repoId),
         getRecommended: () => ipcRenderer.invoke('hf:getRecommended'),
         getBestFile: (repoId) => ipcRenderer.invoke('hf:getBestFile', repoId)
+    },
+
+    ollama: {
+        start: () => ipcRenderer.invoke('ollama:start'),
+        stop: () => ipcRenderer.invoke('ollama:stop'),
+        status: () => ipcRenderer.invoke('ollama:status')
     }
 };
 
